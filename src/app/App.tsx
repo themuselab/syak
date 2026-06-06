@@ -5,6 +5,7 @@ import { CollectionRail } from "../contexts/catalog/ui/CollectionRail";
 import { ShopListSheet } from "../contexts/catalog/ui/ShopListSheet";
 import { ShopDetailSheet } from "../contexts/catalog/ui/ShopDetailSheet";
 import { FilterModal } from "../contexts/catalog/ui/FilterModal";
+import { RegionPicker } from "../contexts/catalog/ui/RegionPicker";
 import { MissedAlertSheet } from "../contexts/lead/ui/MissedAlertSheet";
 import { BottomSheet } from "../shared/ui/BottomSheet";
 import { usecases } from "./composition-root";
@@ -13,7 +14,7 @@ import type { ShopSummary } from "../contexts/catalog/domain/shop";
 import type { Coordinate } from "../shared/domain/coordinate";
 
 export default function App() {
-  const { shops, collections, loading, error, filter, setFilter } = useCatalog();
+  const { shops, allShops, collections, loading, error, filter, setFilter } = useCatalog();
   const [snap, setSnap] = useState<"peek" | "full">("peek");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [highlightId, setHighlightId] = useState<string | undefined>();
@@ -21,6 +22,23 @@ export default function App() {
   const [myPos, setMyPos] = useState<Coordinate | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [leadOpen, setLeadOpen] = useState(false);
+  const [regionOpen, setRegionOpen] = useState(false);
+  const [query, setQuery] = useState("");
+
+  const q = query.trim();
+  const displayed = q ? allShops.filter((s) => s.name.includes(q)) : shops;
+
+  function selectRegion(gu?: string) {
+    setFilter({ ...filter, gu });
+    if (gu) {
+      const inGu = allShops.filter((s) => s.gu === gu && s.coord?.lat && s.coord?.lng);
+      if (inGu.length) {
+        const lat = inGu.reduce((a, s) => a + s.coord.lat, 0) / inGu.length;
+        const lng = inGu.reduce((a, s) => a + s.coord.lng, 0) / inGu.length;
+        setMapCenter({ lat, lng });
+      }
+    }
+  }
 
   function focus(shop: ShopSummary) {
     setHighlightId(shop.id);
@@ -53,17 +71,46 @@ export default function App() {
   return (
     <div style={{ position: "fixed", inset: 0, fontFamily: "-apple-system, 'Apple SD Gothic Neo', sans-serif" }}>
       {/* 상단 바 */}
-      <header style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 15, padding: "12px 16px", display: "flex", alignItems: "center", gap: 8, background: "linear-gradient(#fff, #ffffffdd 70%, transparent)" }}>
-        <img src="/logo.png" alt="syak" style={{ height: 22, display: "block" }} />
-        <span style={{ fontSize: 13, color: "#666" }}>
-          {loading ? "불러오는 중…" : `${shops.length.toLocaleString()}곳`}
-        </span>
-        <button
-          onClick={() => setFilterOpen(true)}
-          style={{ marginLeft: "auto", padding: "7px 14px", borderRadius: 18, border: "1.5px solid #eee", background: "#fff", fontSize: 13, fontWeight: 600, color: activeFilterCount ? "#ec4899" : "#555" }}
-        >
-          필터{activeFilterCount ? ` ${activeFilterCount}` : ""}
-        </button>
+      <header style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 15, padding: "12px 12px 8px", background: "linear-gradient(#fff, #ffffffee 80%, transparent)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <img src="/logo.png" alt="syak" style={{ height: 22, display: "block" }} />
+          <span style={{ fontSize: 13, color: "#666" }}>
+            {loading ? "불러오는 중…" : `${displayed.length.toLocaleString()}곳`}
+          </span>
+          <button
+            onClick={() => setFilterOpen(true)}
+            style={{ marginLeft: "auto", padding: "7px 14px", borderRadius: 18, border: "1.5px solid #eee", background: "#fff", fontSize: 13, fontWeight: 600, color: activeFilterCount ? "#ec4899" : "#555" }}
+          >
+            필터{activeFilterCount ? ` ${activeFilterCount}` : ""}
+          </button>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+          <button
+            onClick={() => setRegionOpen(true)}
+            style={{ flexShrink: 0, padding: "8px 12px", borderRadius: 18, border: "1.5px solid #eee", background: "#fff", fontSize: 13, fontWeight: 700, color: filter.gu ? "#ec4899" : "#333" }}
+          >
+            📍 {filter.gu ?? "전체"} ▾
+          </button>
+          <div style={{ flex: 1, position: "relative" }}>
+            <input
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                if (e.target.value.trim() && snap === "peek") setSnap("full");
+              }}
+              placeholder="🔍 샵 이름 검색"
+              style={{ width: "100%", padding: "9px 30px 9px 12px", borderRadius: 18, border: "1.5px solid #eee", background: "#fff", fontSize: 13, boxSizing: "border-box" }}
+            />
+            {query && (
+              <button
+                onClick={() => setQuery("")}
+                style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", border: "none", background: "transparent", color: "#bbb", fontSize: 16 }}
+              >
+                ×
+              </button>
+            )}
+          </div>
+        </div>
       </header>
 
       {/* 지도 */}
@@ -71,16 +118,16 @@ export default function App() {
         {error ? (
           <div style={{ padding: 24, color: "#c00" }}>데이터 로드 실패: {error}</div>
         ) : (
-          <MapView shops={shops} highlightedId={highlightId} center={mapCenter} myPos={myPos} onPinClick={onPinClick} />
+          <MapView shops={displayed} highlightedId={highlightId} center={mapCenter} myPos={myPos} onPinClick={onPinClick} />
         )}
       </div>
 
       {/* 바텀시트: peek=컬렉션 / full=리스트 */}
       <BottomSheet snap={snap} onSnapChange={setSnap}>
-        {snap === "peek" ? (
-          <CollectionRail collections={collections} onShopClick={openDetail} />
+        {q || snap === "full" ? (
+          <ShopListSheet shops={displayed} onShopClick={openDetail} />
         ) : (
-          <ShopListSheet shops={shops} onShopClick={openDetail} />
+          <CollectionRail collections={collections} onShopClick={openDetail} />
         )}
       </BottomSheet>
 
@@ -120,6 +167,9 @@ export default function App() {
           }}
           onClose={() => setFilterOpen(false)}
         />
+      )}
+      {regionOpen && (
+        <RegionPicker current={filter.gu} onSelect={selectRegion} onClose={() => setRegionOpen(false)} />
       )}
       {leadOpen && <MissedAlertSheet onClose={() => setLeadOpen(false)} />}
     </div>
