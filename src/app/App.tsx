@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { SheetRef } from "react-modal-sheet";
 import { useCatalog } from "../contexts/catalog/ui/hooks/useCatalog";
 import { MapView } from "../contexts/catalog/ui/MapView";
@@ -13,8 +13,9 @@ import { MissedAlertSheet } from "../contexts/lead/ui/MissedAlertSheet";
 import { SnapSheet } from "../shared/ui/SnapSheet";
 import { ShopListSkeleton } from "../shared/ui/Skeleton";
 import { usecases } from "./composition-root";
+import { getUserPosition } from "../shared/platform/geolocation";
+import { distanceMeters, type Coordinate } from "../shared/domain/coordinate";
 import type { ShopSummary } from "../contexts/catalog/domain/shop";
-import type { Coordinate } from "../shared/domain/coordinate";
 
 function applyChip(list: ShopSummary[], chip: ChipKey | null): ShopSummary[] {
   if (!chip) return list;
@@ -35,6 +36,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [highlightId, setHighlightId] = useState<string | undefined>();
   const [mapCenter, setMapCenter] = useState<Coordinate | undefined>();
+  const [myPos, setMyPos] = useState<Coordinate | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [leadOpen, setLeadOpen] = useState(false);
   const [regionOpen, setRegionOpen] = useState(false);
@@ -43,10 +45,26 @@ export default function App() {
   const [chip, setChip] = useState<ChipKey | null>(null);
   const [query, setQuery] = useState("");
 
+  // 첫 진입: 내 위치로 지도 이동 + 주변 가게 우선
+  useEffect(() => {
+    getUserPosition().then((pos) => {
+      if (pos) {
+        setMyPos(pos);
+        setMapCenter(pos);
+      }
+    });
+  }, []);
+
   const q = query.trim();
-  const base = q ? allShops.filter((s) => s.name.includes(q)) : shops;
-  let displayed = applyChip(base, chip);
-  if (customFind) displayed = displayed.filter((s) => s.reservable); // 슬롯 데이터는 추후(AWS) — 지금은 예약가능으로 대체
+  const displayed = useMemo(() => {
+    const base = q ? allShops.filter((s) => s.name.includes(q)) : shops;
+    let list = applyChip(base, chip);
+    if (customFind) list = list.filter((s) => s.reservable); // 슬롯 데이터는 추후(AWS) — 지금은 예약가능으로 대체
+    if (myPos && chip !== "reviews") {
+      list = [...list].sort((a, b) => distanceMeters(myPos, a.coord) - distanceMeters(myPos, b.coord));
+    }
+    return list;
+  }, [q, allShops, shops, chip, customFind, myPos]);
 
   function selectRegion(gu?: string) {
     setFilter({ ...filter, gu });
@@ -134,7 +152,7 @@ export default function App() {
         {error ? (
           <div style={{ padding: 24, paddingTop: 140, color: "#c00" }}>데이터 로드 실패: {error}</div>
         ) : (
-          <MapView shops={displayed} highlightedId={highlightId} center={mapCenter} onPinClick={onPinClick} />
+          <MapView shops={displayed} highlightedId={highlightId} center={mapCenter} myPos={myPos} onPinClick={onPinClick} />
         )}
       </div>
 
