@@ -12,15 +12,17 @@ import { makeTrack } from "../contexts/analytics/application/track";
 import { HttpLeadRepository } from "../contexts/lead/infrastructure/http-lead-repository";
 import { makeRegisterAlert } from "../contexts/lead/application/register-alert";
 
+import { SupabaseSlotProvider } from "../contexts/reservation/infrastructure/supabase-slot-provider";
+import { makeFindOpenShops } from "../contexts/reservation/application/find-open-shops";
+import { makeGetShopSlots } from "../contexts/reservation/application/get-shop-slots";
+
 // ── 어댑터 인스턴스화 (구현 선택) ─────────────────────────
 // 카탈로그: Supabase에서 조회 (정적 JSON에서 DB로 이전).
 // JSON으로 되돌리려면 StaticShopRepository로 교체만 하면 됨.
 const shopRepo = new SupabaseShopRepository();
 const analyticsSink = new HttpAnalyticsSink("toss");
 const leadRepo = new HttpLeadRepository();
-
-// ⛔ reservation: 어댑터 없음. AWS 백엔드 생기면 여기서 주입.
-// const slotProvider = new HttpSlotProvider();
+const slotProvider = new SupabaseSlotProvider(); // 매 정각 배치가 채운 Supabase slots 조회
 
 // ── 유스케이스 묶음 (앱 전체가 이걸 통해 도메인 사용) ──────
 export const usecases = {
@@ -36,7 +38,10 @@ export const usecases = {
   lead: {
     registerAlert: makeRegisterAlert(leadRepo),
   },
-  // reservation: 추후 AWS 어댑터 주입 후 활성화
+  reservation: {
+    findOpenShops: makeFindOpenShops(slotProvider),
+    getShopSlots: makeGetShopSlots(slotProvider),
+  },
 } as const;
 
 export type Usecases = typeof usecases;

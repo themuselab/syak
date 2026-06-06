@@ -1,6 +1,8 @@
 import { useState } from "react";
 
 export type CustomFind = {
+  date: string; // "2026-06-07"
+  hour: string; // "14:00"
   chipLabel: string; // "화요일 2시"
   bannerLabel: string; // "6월 10일 (화) 오후 2시 · 방금 기준"
 };
@@ -21,7 +23,7 @@ export function CustomFindModal({ onApply, onClose }: Props) {
     d.setDate(today.getDate() + i);
     return d;
   });
-  const [dayIdx, setDayIdx] = useState(0);
+  const [dayIdx, setDayIdx] = useState(1); // 기본 '내일' (배치 수집 날짜)
   const [hour, setHour] = useState(14);
 
   function apply() {
@@ -31,7 +33,8 @@ export function CustomFindModal({ onApply, onClose }: Props) {
     const h12 = hour <= 12 ? hour : hour - 12;
     const chipLabel = `${dow}요일 ${h12}시`;
     const bannerLabel = `${d.getMonth() + 1}월 ${d.getDate()}일 (${dow}) ${ampm} ${h12}시 · 방금 기준`;
-    onApply({ chipLabel, bannerLabel });
+    const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    onApply({ date: ymd, hour: `${String(hour).padStart(2, "0")}:00`, chipLabel, bannerLabel });
     onClose();
   }
 

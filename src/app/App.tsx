@@ -42,8 +42,24 @@ export default function App() {
   const [regionOpen, setRegionOpen] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
   const [customFind, setCustomFind] = useState<CustomFind | null>(null);
+  const [openShopIds, setOpenShopIds] = useState<Set<string> | null>(null); // 맞춤찾기 시간에 빈 샵
   const [chip, setChip] = useState<ChipKey | null>(null);
   const [query, setQuery] = useState("");
+
+  // 맞춤찾기(시간) → 그 시간 빈 샵 id 조회
+  useEffect(() => {
+    if (!customFind) {
+      setOpenShopIds(null);
+      return;
+    }
+    let alive = true;
+    usecases.reservation.findOpenShops(customFind.date, customFind.hour).then((ids) => {
+      if (alive) setOpenShopIds(new Set(ids));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [customFind]);
 
   // 첫 진입: 내 위치로 지도 이동 + 주변 가게 우선
   useEffect(() => {
@@ -59,12 +75,12 @@ export default function App() {
   const displayed = useMemo(() => {
     const base = q ? allShops.filter((s) => s.name.includes(q)) : shops;
     let list = applyChip(base, chip);
-    if (customFind) list = list.filter((s) => s.reservable); // 슬롯 데이터는 추후(AWS) — 지금은 예약가능으로 대체
+    if (openShopIds) list = list.filter((s) => openShopIds.has(s.id)); // 맞춤찾기: 그 시간 빈 샵만
     if (myPos && chip !== "reviews") {
       list = [...list].sort((a, b) => distanceMeters(myPos, a.coord) - distanceMeters(myPos, b.coord));
     }
     return list;
-  }, [q, allShops, shops, chip, customFind, myPos]);
+  }, [q, allShops, shops, chip, openShopIds, myPos]);
 
   function selectRegion(gu?: string) {
     setFilter({ ...filter, gu });

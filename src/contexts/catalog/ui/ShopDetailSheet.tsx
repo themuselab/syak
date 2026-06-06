@@ -1,7 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useShopDetail } from "./hooks/useShopDetail";
 import { thumbW } from "../../../shared/ui/image";
+import { usecases } from "../../../app/composition-root";
 import type { ReservationRoute } from "../domain/shop";
+
+function tomorrowYmd(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 type Props = {
   shopId: string;
@@ -12,6 +19,17 @@ type Props = {
 /** 샵 상세 — 전체화면 시트. 이미지/정보/메뉴/이벤트/예약루트. */
 export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
   const { detail, loading } = useShopDetail(shopId);
+  const [slots, setSlots] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    usecases.reservation.getShopSlots(shopId, tomorrowYmd()).then((s) => {
+      if (alive) setSlots(s);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [shopId]);
 
   return (
     <div
@@ -67,6 +85,12 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
             <div style={{ fontSize: 13, color: "#666", marginTop: 10 }}>
               ⭐ 리뷰 {detail.reviewTotal.toLocaleString()} · 블로그 {detail.blogReviewTotal.toLocaleString()}
             </div>
+
+            {/* 내일 빈 시간 */}
+            {slots && slots.length > 0 && (
+              <SlotsCard slots={slots} naverUrl={detail.reservationRoutes.find((r) => r.type === "naver")?.value}
+                onPick={() => onReserveClick(detail.id, { type: "naver", label: "네이버로 예약", value: "" })} />
+            )}
 
             {/* 기본 정보 */}
             <Section title="정보">
@@ -181,6 +205,36 @@ const DTONES = {
 function DBadge({ tone, children }: { tone: keyof typeof DTONES; children: React.ReactNode }) {
   const c = DTONES[tone];
   return <span style={{ fontSize: 13, fontWeight: 600, color: c.color, background: c.bg, borderRadius: 7, padding: "4px 10px" }}>{children}</span>;
+}
+
+function SlotsCard({ slots, naverUrl, onPick }: { slots: string[]; naverUrl?: string; onPick: () => void }) {
+  return (
+    <div style={{ marginTop: 18, padding: 14, borderRadius: 14, background: "#fdeef2", border: "1px solid #f6c6dc" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontSize: 15, fontWeight: 700, color: "#1a1a1a" }}>내일 예약 가능 시간</span>
+        <span style={{ fontSize: 11, color: "#c2477e", fontWeight: 600 }}>매시간 갱신</span>
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 11 }}>
+        {slots.slice(0, 18).map((t) => (
+          <a
+            key={t}
+            href={naverUrl || "#"}
+            target="_blank"
+            rel="noreferrer"
+            onClick={onPick}
+            style={{ padding: "7px 13px", borderRadius: 18, background: "#fff", color: "#ec4899", border: "1.5px solid #ec4899", fontSize: 13, fontWeight: 700, textDecoration: "none" }}
+          >
+            {t}
+          </a>
+        ))}
+      </div>
+      <div style={{ fontSize: 11, color: "#a4567e", marginTop: 11, lineHeight: 1.55 }}>
+        매시간 자동 수집 기준이라 실제 예약 상황과 다를 수 있어요.
+        <br />
+        시간을 누르면 네이버 예약으로 이동해요.
+      </div>
+    </div>
+  );
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
