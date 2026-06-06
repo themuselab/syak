@@ -24,7 +24,10 @@ type Props = {
 };
 
 export function MapView({ shops, highlightedId, center, onPinClick }: Props) {
-  const [loading, error] = useKakaoLoader({ appkey: KAKAO_KEY });
+  const [loading, error] = useKakaoLoader({
+    appkey: KAKAO_KEY,
+    libraries: ["clusterer"], // MarkerClusterer 사용 시 필수
+  });
 
   // 좌표 유효한 것만 (성능 위해 최대 표시 제한)
   const pins = useMemo(
