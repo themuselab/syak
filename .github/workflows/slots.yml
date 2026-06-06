@@ -1,0 +1,25 @@
+name: slot-ingest
+
+on:
+  schedule:
+    - cron: "0 * * * *" # 매 정각 (UTC) — 슬롯 갱신 + Supabase keep-alive
+  workflow_dispatch: {} # 수동 실행 버튼
+
+concurrency:
+  group: slot-ingest
+  cancel-in-progress: true
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Ingest slots → Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: python scraper/slot_ingest.py
