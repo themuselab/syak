@@ -41,7 +41,7 @@ export function CustomFindModal({ onApply, onClose }: Props) {
         onClick={(e) => e.stopPropagation()}
         style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "#fff", borderRadius: "18px 18px 0 0", padding: 22, maxHeight: "80vh", overflowY: "auto" }}
       >
-        <h2 style={{ fontSize: 18, fontWeight: 800, margin: "0 0 4px" }}>⚡ 맞춤 샵 찾기</h2>
+        <h2 style={{ fontSize: 18, fontWeight: 800, margin: "0 0 4px" }}>맞춤 샵 찾기</h2>
         <p style={{ fontSize: 13, color: "#888", margin: "0 0 18px" }}>원하는 날짜·시간에 예약 가능한 샵을 찾아드려요</p>
 
         <Group title="날짜">
@@ -65,7 +65,7 @@ export function CustomFindModal({ onApply, onClose }: Props) {
 
         <button
           onClick={apply}
-          style={{ marginTop: 22, padding: 15, width: "100%", borderRadius: 14, border: "none", background: "#1a1a1a", color: "#fff", fontWeight: 800, fontSize: 15 }}
+          style={{ marginTop: 22, padding: 15, width: "100%", borderRadius: 14, border: "none", background: "#ec4899", color: "#fff", fontWeight: 800, fontSize: 15 }}
         >
           이 시간에 가능한 샵 찾기
         </button>
@@ -90,9 +90,9 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
       style={{
         padding: "9px 14px",
         borderRadius: 20,
-        border: active ? "1.5px solid #3b82f6" : "1.5px solid #e5e5e5",
-        background: active ? "#eaf2ff" : "#fff",
-        color: active ? "#3b82f6" : "#555",
+        border: active ? "1.5px solid #ec4899" : "1.5px solid #e5e5e5",
+        background: active ? "#fdeef2" : "#fff",
+        color: active ? "#ec4899" : "#555",
         fontSize: 13,
         fontWeight: 600,
       }}

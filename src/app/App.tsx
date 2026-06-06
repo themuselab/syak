@@ -90,7 +90,7 @@ export default function App() {
               setQuery(e.target.value);
               if (e.target.value.trim()) sheetRef.current?.snapTo(0);
             }}
-            placeholder="🔍  샵 이름으로 찾기"
+            placeholder="샵 이름으로 찾기"
             style={{ width: "100%", padding: "14px 36px 14px 16px", borderRadius: 16, border: "none", background: "#f2f2f4", fontSize: 16, boxSizing: "border-box", fontWeight: 500 }}
           />
           {query && (
@@ -107,7 +107,7 @@ export default function App() {
           <button onClick={() => setFilterOpen(true)} style={pill("outline")}>
             필터
             {activeFilterCount > 0 && (
-              <span style={{ marginLeft: 6, background: "#1a1a1a", color: "#fff", borderRadius: 10, fontSize: 11, fontWeight: 700, padding: "1px 6px" }}>
+              <span style={{ marginLeft: 6, background: "#ec4899", color: "#fff", borderRadius: 10, fontSize: 11, fontWeight: 700, padding: "1px 6px" }}>
                 {activeFilterCount}
               </span>
             )}
@@ -116,11 +116,11 @@ export default function App() {
           <div style={{ marginLeft: "auto" }}>
             {customFind ? (
               <button onClick={() => setCustomFind(null)} style={pill("active")}>
-                ⚡ {customFind.chipLabel} ✕
+                {customFind.chipLabel} ✕
               </button>
             ) : (
               <button onClick={() => setFindOpen(true)} style={pill("dark")}>
-                ⚡ 맞춤 샵 찾기
+                맞춤 샵 찾기
               </button>
             )}
           </div>
@@ -139,9 +139,9 @@ export default function App() {
       {/* 취소석 알림 (지도 우하단) */}
       <button
         onClick={() => setLeadOpen(true)}
-        style={{ position: "absolute", right: 16, top: "42%", zIndex: 18, padding: "11px 16px", borderRadius: 24, border: "none", background: "#1a1a1a", color: "#fff", fontWeight: 700, fontSize: 14, boxShadow: "0 4px 16px rgba(0,0,0,.25)" }}
+        style={{ position: "absolute", right: 16, top: "42%", zIndex: 18, padding: "11px 16px", borderRadius: 24, border: "none", background: "#ec4899", color: "#fff", fontWeight: 700, fontSize: 14, boxShadow: "0 4px 16px rgba(236,72,153,.35)" }}
       >
-        🔔 취소석 알림
+        취소석 알림
       </button>
 
       {/* 바텀시트 */}
@@ -190,7 +190,7 @@ export default function App() {
 
 function pill(kind: "dark" | "outline" | "active"): React.CSSProperties {
   const base: React.CSSProperties = { padding: "9px 15px", borderRadius: 20, fontSize: 14, fontWeight: 700, border: "none", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center" };
-  if (kind === "dark") return { ...base, background: "#1a1a1a", color: "#fff" };
-  if (kind === "active") return { ...base, background: "#3b82f6", color: "#fff" };
+  if (kind === "dark") return { ...base, background: "#ec4899", color: "#fff" };
+  if (kind === "active") return { ...base, background: "#be185d", color: "#fff" };
   return { ...base, background: "#fff", color: "#333", border: "1.5px solid #e5e5e5" };
 }

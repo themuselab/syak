@@ -70,21 +70,21 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
 
             {/* 기본 정보 */}
             <Section title="정보">
-              <Info label="📍 주소" value={detail.roadAddress} />
-              <Info label="🕐 영업" value={detail.hoursText} />
-              <Info label="📞 전화" value={detail.phone} />
+              <Info label="주소" value={detail.roadAddress} />
+              <Info label="영업" value={detail.hoursText} />
+              <Info label="전화" value={detail.phone} />
               {detail.instagram && (
                 <Info
-                  label="📷 인스타"
+                  label="인스타"
                   value={
-                    <a href={detail.instagram} target="_blank" rel="noreferrer" style={{ color: "#c13584" }}>
+                    <a href={detail.instagram} target="_blank" rel="noreferrer" style={{ color: "#ec4899" }}>
                       {detail.instagram.replace("https://www.instagram.com/", "@").split("?")[0]}
                     </a>
                   }
                 />
               )}
               {detail.conveniences.length > 0 && (
-                <Info label="✨ 편의" value={detail.conveniences.join(" · ")} />
+                <Info label="편의" value={detail.conveniences.join(" · ")} />
               )}
             </Section>
 
@@ -97,7 +97,7 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
                     style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}
                   >
                     <span>
-                      {m.recommend && "⭐ "}
+                      {m.recommend && <span style={{ color: "#ec4899", fontWeight: 700, marginRight: 4 }}>추천</span>}
                       {m.name}
                     </span>
                     <span style={{ fontWeight: 600 }}>
@@ -238,7 +238,7 @@ function ReserveBar({ routes, onReserve }: { routes: ReservationRoute[]; onReser
         target={primary.type === "phone" ? undefined : "_blank"}
         rel="noreferrer"
         onClick={() => onReserve(primary)}
-        style={{ display: "block", textAlign: "center", padding: 16, borderRadius: 14, background: "#1a1a1a", color: "#fff", fontWeight: 800, fontSize: 16, textDecoration: "none" }}
+        style={{ display: "block", textAlign: "center", padding: 16, borderRadius: 14, background: "#ec4899", color: "#fff", fontWeight: 800, fontSize: 16, textDecoration: "none" }}
       >
         {primary.label}
       </a>

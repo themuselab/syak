@@ -1,23 +1,39 @@
-import { forwardRef, type ReactNode } from "react";
+import { forwardRef, useEffect, useRef, type ReactNode } from "react";
 import { Sheet, type SheetRef } from "react-modal-sheet";
 
 type Props = {
   children: ReactNode;
-  snapPoints?: number[]; // px 높이, 큰 값(full) → 작은 값(peek) 순
+  // v5 규칙: 오름차순, 0(닫힘)으로 시작, 1(완전 열림)로 끝. 값=보이는 높이 비율.
+  // [0, 0.3, 0.6, 1] → idx1=peek 30%, idx2=mid 60%, idx3=full
+  snapPoints?: number[];
   initialSnap?: number;
   onSnap?: (i: number) => void;
   mountPoint?: Element; // App 컨테이너 안에 mount → z-index 정상화(오버레이가 시트 위)
 };
 
 /** 스냅 포인트 바텀시트 (peek↔full). 드래그 어디서나 + 스크롤↔접힘 자동 조율.
- *  항상 떠있는 비모달 시트(닫히지 않음). 배경(Backdrop) 없음 → 지도 보임. */
+ *  항상 떠있는 비모달 시트(닫히지 않음). 배경(Backdrop) 없음 → 지도 보임.
+ *  react-modal-sheet의 initialSnap이 안 먹는 케이스가 있어 마운트 후 강제 snapTo. */
 export const SnapSheet = forwardRef<SheetRef, Props>(function SnapSheet(
-  { children, snapPoints = [760, 420, 165], initialSnap = 2, onSnap, mountPoint },
-  ref,
+  { children, snapPoints = [0, 0.3, 0.6, 1], initialSnap = 1, onSnap, mountPoint },
+  forwardedRef,
 ) {
+  const innerRef = useRef<SheetRef | null>(null);
+
+  function setRefs(el: SheetRef | null) {
+    innerRef.current = el;
+    if (typeof forwardedRef === "function") forwardedRef(el);
+    else if (forwardedRef) forwardedRef.current = el;
+  }
+
+  useEffect(() => {
+    const t = setTimeout(() => innerRef.current?.snapTo(initialSnap), 60);
+    return () => clearTimeout(t);
+  }, [initialSnap]);
+
   return (
     <Sheet
-      ref={ref}
+      ref={setRefs}
       isOpen
       onClose={() => {}}
       disableDismiss

@@ -30,8 +30,8 @@ export function MissedAlertSheet({ onClose }: Props) {
       >
         {state === "done" ? (
           <div style={{ textAlign: "center", padding: "12px 0" }}>
-            <div style={{ fontSize: 40 }}>🔔</div>
-            <h2 style={{ fontSize: 18, fontWeight: 800, margin: "10px 0 6px" }}>신청 완료!</h2>
+            <div style={{ width: 48, height: 48, borderRadius: 24, background: "#ec4899", color: "#fff", fontSize: 26, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto" }}>✓</div>
+            <h2 style={{ fontSize: 18, fontWeight: 800, margin: "14px 0 6px" }}>신청 완료!</h2>
             <p style={{ fontSize: 14, color: "#666", margin: 0 }}>
               빈자리 자동 매칭 서비스가 나오면 가장 먼저 알려드릴게요.
             </p>

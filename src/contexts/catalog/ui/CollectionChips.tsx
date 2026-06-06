@@ -1,11 +1,11 @@
 export type ChipKey = "event" | "price1" | "price2" | "firstVisit" | "reviews";
 
 export const CHIPS: { key: ChipKey; label: string }[] = [
-  { key: "event", label: "🎁 이벤트" },
-  { key: "price2", label: "💰 2만원대" },
-  { key: "price1", label: "💰 1만원대" },
-  { key: "firstVisit", label: "🏷️ 첫방문 특가" },
-  { key: "reviews", label: "⭐ 리뷰 많은" },
+  { key: "event", label: "이벤트" },
+  { key: "price2", label: "2만원대" },
+  { key: "price1", label: "1만원대" },
+  { key: "firstVisit", label: "첫방문 특가" },
+  { key: "reviews", label: "리뷰 많은" },
 ];
 
 type Props = {
@@ -36,7 +36,7 @@ export function CollectionChips({ active, onSelect }: Props) {
               padding: "9px 15px",
               borderRadius: 20,
               border: "none",
-              background: on ? "#1a1a1a" : "#f1f1f4",
+              background: on ? "#ec4899" : "#f1f1f4",
               color: on ? "#fff" : "#444",
               fontSize: 14,
               fontWeight: 700,
