@@ -44,5 +44,5 @@ export function buildCollections(shops: ShopSummary[]): Collection[] {
     { key: "price1", title: "1만원대", shops: shops.filter((s) => s.priceTier === "1만원대").sort(byReviews) },
     { key: "price2", title: "2만원대", shops: shops.filter((s) => s.priceTier === "2만원대").sort(byReviews) },
     { key: "manyReviews", title: "리뷰 많은 샵", shops: [...shops].sort(byReviews) },
-  ].map((c) => ({ ...c, shops: c.shops.slice(0, 20) }));
+  ].map((c) => ({ ...c, shops: c.shops.slice(0, 12) }));
 }
