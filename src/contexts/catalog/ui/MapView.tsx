@@ -46,12 +46,12 @@ export function MapView({ shops, highlightedId, center, myPos, onPinClick }: Pro
   const onClickRef = useRef(onPinClick);
   onClickRef.current = onPinClick;
 
-  // 네이티브 클러스터러 — 마커 전체를 React 밖에서 관리 (성능 핵심)
+  // 네이티브 클러스터러 — 마커 전체를 React 밖에서 관리 + 프레임 단위 점진 추가(블로킹 방지)
   useEffect(() => {
     const kakao = (window as KakaoAny).kakao;
     if (!map || !kakao?.maps?.MarkerClusterer) return;
 
-    // 카테고리별 공유 이미지 (8개만 생성, 7,635개 마커가 재사용)
+    // 카테고리별 공유 이미지 (8개만 생성, 마커들이 재사용)
     if (!Object.keys(imagesRef.current).length) {
       for (const [cat, color] of Object.entries(CATEGORY_COLORS)) {
         imagesRef.current[cat] = new kakao.maps.MarkerImage(
@@ -63,33 +63,45 @@ export function MapView({ shops, highlightedId, center, myPos, onPinClick }: Pro
     const images = imagesRef.current;
     const fallback = images["네일"];
 
-    const byId: Record<string, KakaoAny> = {};
-    const markers: KakaoAny[] = [];
-    for (const s of shops) {
-      if (!s.coord?.lat || !s.coord?.lng) continue;
-      const marker = new kakao.maps.Marker({
-        position: new kakao.maps.LatLng(s.coord.lat, s.coord.lng),
-        image: images[s.category] || fallback,
-        title: s.name,
-      });
-      const shop = s;
-      kakao.maps.event.addListener(marker, "click", () => onClickRef.current(shop));
-      byId[s.id] = marker;
-      markers.push(marker);
-    }
-    markersById.current = byId;
-
     const clusterer = new kakao.maps.MarkerClusterer({
       map,
       averageCenter: true,
-      minLevel: 6, // 이 레벨 이상(줌아웃)에서 클러스터, 미만(줌인)에서 개별 핀
-      gridSize: 60,
+      minLevel: 6, // 이상(줌아웃)=클러스터, 미만(줌인)=개별 핀
+      gridSize: 80, // 클러스터 묶는 범위 ↑ → 클러스터 수 ↓ → 가벼움
+      minClusterSize: 2,
       disableClickZoom: false,
-      markers,
     });
     clustererRef.current = clusterer;
 
+    const list = shops.filter((s) => s.coord?.lat && s.coord?.lng);
+    const byId: Record<string, KakaoAny> = {};
+    markersById.current = byId;
+
+    // 한 번에 7,635개 생성 시 메인스레드 정지 → 1,500개씩 프레임에 나눠 추가
+    let cancelled = false;
+    let i = 0;
+    const BATCH = 1500;
+    function step() {
+      if (cancelled) return;
+      const slice = list.slice(i, i + BATCH);
+      const markers = slice.map((s) => {
+        const marker = new kakao.maps.Marker({
+          position: new kakao.maps.LatLng(s.coord.lat, s.coord.lng),
+          image: images[s.category] || fallback,
+          title: s.name,
+        });
+        kakao.maps.event.addListener(marker, "click", () => onClickRef.current(s));
+        byId[s.id] = marker;
+        return marker;
+      });
+      clusterer.addMarkers(markers);
+      i += BATCH;
+      if (i < list.length) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+
     return () => {
+      cancelled = true;
       clusterer.clear();
       clusterer.setMap(null);
       markersById.current = {};
