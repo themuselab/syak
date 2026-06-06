@@ -139,7 +139,7 @@ export default function App() {
       {/* 취소석 알림 (지도 우하단) */}
       <button
         onClick={() => setLeadOpen(true)}
-        style={{ position: "absolute", right: 16, top: "42%", zIndex: 18, padding: "11px 16px", borderRadius: 24, border: "none", background: "#ec4899", color: "#fff", fontWeight: 700, fontSize: 14, boxShadow: "0 4px 16px rgba(236,72,153,.35)" }}
+        style={{ position: "absolute", right: 16, bottom: "calc(30vh + 14px)", zIndex: 18, padding: "11px 16px", borderRadius: 24, border: "none", background: "#ec4899", color: "#fff", fontWeight: 700, fontSize: 14, boxShadow: "0 4px 16px rgba(236,72,153,.35)" }}
       >
         취소석 알림
       </button>

@@ -63,6 +63,20 @@ export function MapView({ shops, highlightedId, center, myPos, onPinClick }: Pro
     const images = imagesRef.current;
     const fallback = images["네일"];
 
+    const clusterStyle = (size: number, bg: string) => ({
+      width: `${size}px`,
+      height: `${size}px`,
+      background: bg,
+      borderRadius: `${size / 2}px`,
+      color: "#fff",
+      textAlign: "center" as const,
+      lineHeight: `${size}px`,
+      fontSize: "13px",
+      fontWeight: "700",
+      border: "2px solid #fff",
+      boxShadow: "0 2px 8px rgba(157,23,107,.35)",
+    });
+
     const clusterer = new kakao.maps.MarkerClusterer({
       map,
       averageCenter: true,
@@ -70,6 +84,14 @@ export function MapView({ shops, highlightedId, center, myPos, onPinClick }: Pro
       gridSize: 80, // 클러스터 묶는 범위 ↑ → 클러스터 수 ↓ → 가벼움
       minClusterSize: 2,
       disableClickZoom: false,
+      // 브랜드 핑크 농담 (개수 많을수록 진하게)
+      calculator: [10, 100, 500],
+      styles: [
+        clusterStyle(38, "rgba(244,114,182,0.92)"),
+        clusterStyle(46, "rgba(236,72,153,0.93)"),
+        clusterStyle(56, "rgba(219,39,119,0.95)"),
+        clusterStyle(66, "rgba(157,23,107,0.95)"),
+      ],
     });
     clustererRef.current = clusterer;
 
