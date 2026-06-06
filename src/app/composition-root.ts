@@ -1,7 +1,7 @@
 // 조립(Composition Root) — 포트 ↔ 어댑터를 연결하는 유일한 장소.
 // 나머지 코드는 포트(인터페이스)에만 의존한다. 어댑터 교체는 여기 한 곳만 바꾸면 된다.
 
-import { StaticShopRepository } from "../contexts/catalog/infrastructure/static-shop-repository";
+import { SupabaseShopRepository } from "../contexts/catalog/infrastructure/supabase-shop-repository";
 import { makeSearchShops, makeSearchByName } from "../contexts/catalog/application/search-shops";
 import { makeListCollections } from "../contexts/catalog/application/list-collections";
 import { makeGetShopDetail } from "../contexts/catalog/application/get-shop-detail";
@@ -13,7 +13,9 @@ import { HttpLeadRepository } from "../contexts/lead/infrastructure/http-lead-re
 import { makeRegisterAlert } from "../contexts/lead/application/register-alert";
 
 // ── 어댑터 인스턴스화 (구현 선택) ─────────────────────────
-const shopRepo = new StaticShopRepository();
+// 카탈로그: Supabase에서 조회 (정적 JSON에서 DB로 이전).
+// JSON으로 되돌리려면 StaticShopRepository로 교체만 하면 됨.
+const shopRepo = new SupabaseShopRepository();
 const analyticsSink = new HttpAnalyticsSink("toss");
 const leadRepo = new HttpLeadRepository();
 
