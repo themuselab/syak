@@ -23,7 +23,14 @@ export function ShopListSheet({ shops, onShopClick }: Props) {
         {shops.length.toLocaleString()}곳
       </div>
       {shops.slice(0, 120).map((s) => (
-        <div key={s.id} style={{ borderTop: "1px solid #f4f4f6" }}>
+        <div
+          key={s.id}
+          style={{
+            borderTop: "1px solid #f4f4f6",
+            contentVisibility: "auto",
+            containIntrinsicSize: "0 92px",
+          } as React.CSSProperties}
+        >
           <ShopCard shop={s} onClick={onShopClick} variant="list" />
         </div>
       ))}

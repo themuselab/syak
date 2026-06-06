@@ -1,5 +1,6 @@
 import { useShopDetail } from "./hooks/useShopDetail";
 import { ROUTE_ICON } from "./theme";
+import { thumbW } from "../../../shared/ui/image";
 import type { ReservationRoute } from "../domain/shop";
 
 type Props = {
@@ -144,9 +145,10 @@ function Gallery({ images }: { images: string[] }) {
       {images.slice(0, 10).map((src, i) => (
         <img
           key={i}
-          src={src}
+          src={thumbW(src, 600)}
           alt=""
           loading="lazy"
+          decoding="async"
           style={{ width: i === 0 ? "100%" : 240, height: 240, objectFit: "cover", flexShrink: 0, scrollSnapAlign: "start" }}
         />
       ))}

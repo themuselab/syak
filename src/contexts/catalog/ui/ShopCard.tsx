@@ -1,5 +1,6 @@
 import type { ShopSummary } from "../domain/shop";
 import { CATEGORY_COLORS } from "./theme";
+import { thumb } from "../../../shared/ui/image";
 
 type Props = {
   shop: ShopSummary;
@@ -28,9 +29,10 @@ export function ShopCard({ shop, onClick, variant = "list" }: Props) {
       <div style={{ position: "relative", flexShrink: 0 }}>
         {shop.representativeImage ? (
           <img
-            src={shop.representativeImage}
+            src={thumb(shop.representativeImage, rail ? 280 : 160)}
             alt=""
             loading="lazy"
+            decoding="async"
             style={{
               width: rail ? 132 : 72,
               height: rail ? 100 : 72,
