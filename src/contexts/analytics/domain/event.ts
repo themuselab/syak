@@ -2,6 +2,7 @@
 
 export type EventName =
   | "session_start"
+  | "session_end" // 이탈 (ms=잔류시간)
   | "impression" // 카드/핀 노출
   | "pin_click" // 지도 핀 클릭
   | "card_click" // 리스트 카드 클릭
@@ -19,5 +20,6 @@ export interface AnalyticsEvent {
   shopDistrict?: string;
   route?: string; // 예약 루트(naver/talktalk/…) 또는 진입 경로
   entry?: EntryRoute;
+  source?: string; // 진입 키워드/소스 (utm_source, src 등)
   ms?: number; // dwell 또는 time-to-click
 }

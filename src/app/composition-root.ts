@@ -6,10 +6,10 @@ import { makeSearchShops, makeSearchByName } from "../contexts/catalog/applicati
 import { makeListCollections } from "../contexts/catalog/application/list-collections";
 import { makeGetShopDetail } from "../contexts/catalog/application/get-shop-detail";
 
-import { HttpAnalyticsSink } from "../contexts/analytics/infrastructure/http-analytics-sink";
+import { SupabaseAnalyticsSink } from "../contexts/analytics/infrastructure/supabase-analytics-sink";
 import { makeTrack } from "../contexts/analytics/application/track";
 
-import { HttpLeadRepository } from "../contexts/lead/infrastructure/http-lead-repository";
+import { SupabaseLeadRepository } from "../contexts/lead/infrastructure/supabase-lead-repository";
 import { makeRegisterAlert } from "../contexts/lead/application/register-alert";
 
 import { SupabaseSlotProvider } from "../contexts/reservation/infrastructure/supabase-slot-provider";
@@ -20,8 +20,8 @@ import { makeGetShopSlots } from "../contexts/reservation/application/get-shop-s
 // 카탈로그: Supabase에서 조회 (정적 JSON에서 DB로 이전).
 // JSON으로 되돌리려면 StaticShopRepository로 교체만 하면 됨.
 const shopRepo = new SupabaseShopRepository();
-const analyticsSink = new HttpAnalyticsSink("toss");
-const leadRepo = new HttpLeadRepository();
+const analyticsSink = new SupabaseAnalyticsSink("toss");
+const leadRepo = new SupabaseLeadRepository();
 const slotProvider = new SupabaseSlotProvider(); // 매 정각 배치가 채운 Supabase slots 조회
 
 // ── 유스케이스 묶음 (앱 전체가 이걸 통해 도메인 사용) ──────

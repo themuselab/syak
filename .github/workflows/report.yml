@@ -1,0 +1,28 @@
+name: discord-report
+
+on:
+  schedule:
+    - cron: "0 23 * * *" # 매일 08:00 KST (전날 24시간 리포트)
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: "집계 시간(기본 24)"
+        required: false
+        default: "24"
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Send report → Discord
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          REPORT_HOURS: ${{ github.event.inputs.hours || '24' }}
+        run: python scraper/discord_report.py

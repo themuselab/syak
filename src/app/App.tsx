@@ -61,6 +61,29 @@ export default function App() {
     };
   }, [customFind]);
 
+  // 세션 진입 이벤트 (몇 명·어떤 키워드로 들어왔는지)
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const src = p.get("utm_source") || p.get("src");
+    const ref = document.referrer ? new URL(document.referrer).hostname : "";
+    usecases.analytics.track({
+      event: "session_start",
+      entry: src ? "campaign" : ref ? "deeplink" : "organic",
+      source: src || ref || "direct",
+    });
+    // 잔류시간: 이탈(탭 숨김) 시 session_end with 경과 ms
+    const start = Date.now();
+    let ended = false;
+    const onHide = () => {
+      if (document.visibilityState === "hidden" && !ended) {
+        ended = true;
+        usecases.analytics.track({ event: "session_end", ms: Date.now() - start });
+      }
+    };
+    document.addEventListener("visibilitychange", onHide);
+    return () => document.removeEventListener("visibilitychange", onHide);
+  }, []);
+
   // 첫 진입: 내 위치로 지도 이동 + 주변 가게 우선
   useEffect(() => {
     getUserPosition().then((pos) => {
