@@ -27,3 +27,6 @@ yarn-error.log*
 *.local
 
 .vercel
+
+# AIT 빌드 산출물
+*.ait
