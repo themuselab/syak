@@ -8,6 +8,7 @@ import { FilterModal } from "../contexts/catalog/ui/FilterModal";
 import { RegionPicker } from "../contexts/catalog/ui/RegionPicker";
 import { MissedAlertSheet } from "../contexts/lead/ui/MissedAlertSheet";
 import { BottomSheet } from "../shared/ui/BottomSheet";
+import { ShopListSkeleton } from "../shared/ui/Skeleton";
 import { usecases } from "./composition-root";
 import { getUserPosition } from "../shared/platform/geolocation";
 import type { ShopSummary } from "../contexts/catalog/domain/shop";
@@ -124,7 +125,9 @@ export default function App() {
 
       {/* 바텀시트: peek=컬렉션 / full=리스트 */}
       <BottomSheet snap={snap} onSnapChange={setSnap}>
-        {q || snap === "full" ? (
+        {loading ? (
+          <ShopListSkeleton />
+        ) : q || snap === "full" ? (
           <ShopListSheet shops={displayed} onShopClick={openDetail} />
         ) : (
           <CollectionRail collections={collections} onShopClick={openDetail} />

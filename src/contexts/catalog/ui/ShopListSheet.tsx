@@ -8,6 +8,15 @@ type Props = {
 
 /** 바텀시트 full 상태의 리스트뷰. */
 export function ShopListSheet({ shops, onShopClick }: Props) {
+  if (shops.length === 0) {
+    return (
+      <div style={{ padding: "48px 24px", textAlign: "center", color: "#999" }}>
+        <div style={{ fontSize: 32, marginBottom: 8 }}>🔍</div>
+        <div style={{ fontSize: 14 }}>조건에 맞는 샵이 없어요</div>
+        <div style={{ fontSize: 12, color: "#bbb", marginTop: 4 }}>지역·필터·검색어를 바꿔보세요</div>
+      </div>
+    );
+  }
   return (
     <div>
       <div style={{ fontSize: 12, color: "#888", padding: "4px 16px 8px" }}>
