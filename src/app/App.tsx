@@ -39,7 +39,7 @@ export default function App() {
     <div style={{ position: "fixed", inset: 0, fontFamily: "-apple-system, 'Apple SD Gothic Neo', sans-serif" }}>
       {/* 상단 바 */}
       <header style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 15, padding: "12px 16px", display: "flex", alignItems: "center", gap: 8, background: "linear-gradient(#fff, #ffffffdd 70%, transparent)" }}>
-        <strong style={{ fontSize: 18, color: "#ec4899" }}>샥</strong>
+        <img src="/logo.png" alt="syak" style={{ height: 22, display: "block" }} />
         <span style={{ fontSize: 13, color: "#666" }}>
           {loading ? "불러오는 중…" : `${shops.length.toLocaleString()}곳`}
         </span>
