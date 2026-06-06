@@ -7,6 +7,7 @@ import { ShopListSheet } from "../contexts/catalog/ui/ShopListSheet";
 import { ShopDetailSheet } from "../contexts/catalog/ui/ShopDetailSheet";
 import { FilterModal } from "../contexts/catalog/ui/FilterModal";
 import { RegionPicker } from "../contexts/catalog/ui/RegionPicker";
+import { ActiveFilters } from "../contexts/catalog/ui/ActiveFilters";
 import { CustomFindModal, type CustomFind } from "../contexts/catalog/ui/CustomFindModal";
 import { MissedAlertSheet } from "../contexts/lead/ui/MissedAlertSheet";
 import { SnapSheet } from "../shared/ui/SnapSheet";
@@ -125,6 +126,7 @@ export default function App() {
             )}
           </div>
         </div>
+        <ActiveFilters filter={filter} onChange={setFilter} />
       </header>
 
       {/* 지도 */}
