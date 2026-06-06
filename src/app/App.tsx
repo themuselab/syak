@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import type { SheetRef } from "react-modal-sheet";
 import { useCatalog } from "../contexts/catalog/ui/hooks/useCatalog";
 import { MapView } from "../contexts/catalog/ui/MapView";
 import { CollectionRail } from "../contexts/catalog/ui/CollectionRail";
@@ -7,7 +8,7 @@ import { ShopDetailSheet } from "../contexts/catalog/ui/ShopDetailSheet";
 import { FilterModal } from "../contexts/catalog/ui/FilterModal";
 import { RegionPicker } from "../contexts/catalog/ui/RegionPicker";
 import { MissedAlertSheet } from "../contexts/lead/ui/MissedAlertSheet";
-import { BottomSheet } from "../shared/ui/BottomSheet";
+import { SnapSheet } from "../shared/ui/SnapSheet";
 import { ShopListSkeleton } from "../shared/ui/Skeleton";
 import { usecases } from "./composition-root";
 import { getUserPosition } from "../shared/platform/geolocation";
@@ -16,7 +17,8 @@ import type { Coordinate } from "../shared/domain/coordinate";
 
 export default function App() {
   const { shops, allShops, collections, loading, error, filter, setFilter } = useCatalog();
-  const [snap, setSnap] = useState<"peek" | "full">("peek");
+  const [root, setRoot] = useState<HTMLDivElement | null>(null);
+  const sheetRef = useRef<SheetRef>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [highlightId, setHighlightId] = useState<string | undefined>();
   const [mapCenter, setMapCenter] = useState<Coordinate | undefined>();
@@ -70,9 +72,9 @@ export default function App() {
     (filter.reservableOnly ? 1 : 0);
 
   return (
-    <div style={{ position: "fixed", inset: 0, fontFamily: "-apple-system, 'Apple SD Gothic Neo', sans-serif" }}>
+    <div ref={setRoot} style={{ position: "fixed", inset: 0, fontFamily: "-apple-system, 'Apple SD Gothic Neo', sans-serif" }}>
       {/* 상단 바 */}
-      <header style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 15, padding: "12px 12px 8px", background: "linear-gradient(#fff, #ffffffee 80%, transparent)" }}>
+      <header style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 25, padding: "12px 12px 8px", background: "linear-gradient(#fff, #ffffffee 80%, transparent)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <img src="/logo.png" alt="syak" style={{ height: 22, display: "block" }} />
           <span style={{ fontSize: 13, color: "#666" }}>
@@ -97,7 +99,7 @@ export default function App() {
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);
-                if (e.target.value.trim() && snap === "peek") setSnap("full");
+                if (e.target.value.trim()) sheetRef.current?.snapTo(0);
               }}
               placeholder="🔍 샵 이름 검색"
               style={{ width: "100%", padding: "9px 30px 9px 12px", borderRadius: 18, border: "1.5px solid #eee", background: "#fff", fontSize: 13, boxSizing: "border-box" }}
@@ -123,33 +125,39 @@ export default function App() {
         )}
       </div>
 
-      {/* 바텀시트: peek=컬렉션 / full=리스트 */}
-      <BottomSheet snap={snap} onSnapChange={setSnap}>
-        {loading ? (
-          <ShopListSkeleton />
-        ) : q || snap === "full" ? (
-          <ShopListSheet shops={displayed} onShopClick={openDetail} />
-        ) : (
-          <CollectionRail collections={collections} onShopClick={openDetail} />
-        )}
-      </BottomSheet>
-
-      {/* 내 위치 버튼 */}
+      {/* 우상단 플로팅 (헤더 아래, 항상 보임) */}
+      <button
+        onClick={() => setLeadOpen(true)}
+        style={{ position: "absolute", right: 12, top: 104, zIndex: 18, padding: "9px 13px", borderRadius: 22, border: "none", background: "#ec4899", color: "#fff", fontWeight: 700, fontSize: 12, boxShadow: "0 4px 16px rgba(236,72,153,.4)" }}
+      >
+        🔔 빈자리 알림
+      </button>
       <button
         onClick={handleLocate}
         aria-label="내 위치"
-        style={{ position: "absolute", right: 16, bottom: 296, zIndex: 16, width: 44, height: 44, borderRadius: 22, border: "1px solid #eee", background: "#fff", boxShadow: "0 3px 12px rgba(0,0,0,.15)", fontSize: 18 }}
+        style={{ position: "absolute", right: 12, top: 150, zIndex: 18, width: 42, height: 42, borderRadius: 21, border: "1px solid #eee", background: "#fff", boxShadow: "0 3px 12px rgba(0,0,0,.15)", fontSize: 18 }}
       >
         📍
       </button>
 
-      {/* 취소석 플로팅 버튼 */}
-      <button
-        onClick={() => setLeadOpen(true)}
-        style={{ position: "absolute", right: 16, bottom: 240, zIndex: 16, padding: "10px 14px", borderRadius: 24, border: "none", background: "#ec4899", color: "#fff", fontWeight: 700, fontSize: 13, boxShadow: "0 4px 16px rgba(236,72,153,.4)" }}
-      >
-        🔔 빈자리 알림
-      </button>
+      {/* 바텀시트 — 한 스크롤(컬렉션 + 전체 리스트), 스냅 드래그 */}
+      {root && (
+        <SnapSheet ref={sheetRef} mountPoint={root}>
+          {loading ? (
+            <ShopListSkeleton />
+          ) : (
+            <>
+              {!q && collections.length > 0 && (
+                <>
+                  <CollectionRail collections={collections} onShopClick={openDetail} />
+                  <div style={{ height: 8, background: "#f6f6f8" }} />
+                </>
+              )}
+              <ShopListSheet shops={displayed} onShopClick={openDetail} />
+            </>
+          )}
+        </SnapSheet>
+      )}
 
       {/* 오버레이들 */}
       {selectedId && (
