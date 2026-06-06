@@ -1,5 +1,5 @@
+import { useState } from "react";
 import { useShopDetail } from "./hooks/useShopDetail";
-import { ROUTE_ICON } from "./theme";
 import { thumbW } from "../../../shared/ui/image";
 import type { ReservationRoute } from "../domain/shop";
 
@@ -58,13 +58,13 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
           />
 
           <div style={{ padding: "14px 16px 100px" }}>
-            <h2 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>{detail.name}</h2>
-            <div style={{ fontSize: 13, color: "#ec4899", marginTop: 4 }}>
-              {detail.category}
-              {detail.firstVisitDeal && " · 첫방문특가"}
-              {detail.hasEvent && " · 이벤트중"}
+            <h2 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>{detail.name}</h2>
+            <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+              {detail.hasEvent && <DBadge tone="event">이벤트</DBadge>}
+              <DBadge tone="price">{detail.priceTier}</DBadge>
+              {detail.firstVisitDeal && <DBadge tone="first">첫방문 특가</DBadge>}
             </div>
-            <div style={{ fontSize: 13, color: "#666", marginTop: 6 }}>
+            <div style={{ fontSize: 13, color: "#666", marginTop: 10 }}>
               ⭐ 리뷰 {detail.reviewTotal.toLocaleString()} · 블로그 {detail.blogReviewTotal.toLocaleString()}
             </div>
 
@@ -139,21 +139,48 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
 }
 
 function Gallery({ images }: { images: string[] }) {
-  if (!images.length) return <div style={{ height: 200, background: "#f2f2f4" }} />;
+  const [idx, setIdx] = useState(0);
+  if (!images.length)
+    return (
+      <div style={{ height: 260, background: "#ededf0", display: "flex", alignItems: "center", justifyContent: "center", color: "#bbb", fontSize: 15 }}>
+        이미지 갤러리
+      </div>
+    );
+  const shown = images.slice(0, 10);
   return (
-    <div style={{ display: "flex", overflowX: "auto", scrollbarWidth: "none" }}>
-      {images.slice(0, 10).map((src, i) => (
-        <img
-          key={i}
-          src={thumbW(src, 600)}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          style={{ width: i === 0 ? "100%" : 240, height: 240, objectFit: "cover", flexShrink: 0, scrollSnapAlign: "start" }}
-        />
-      ))}
+    <div style={{ position: "relative" }}>
+      <div
+        onScroll={(e) => setIdx(Math.round(e.currentTarget.scrollLeft / e.currentTarget.clientWidth))}
+        style={{ display: "flex", overflowX: "auto", scrollSnapType: "x mandatory", scrollbarWidth: "none" }}
+      >
+        {shown.map((src, i) => (
+          <img
+            key={i}
+            src={thumbW(src, 700)}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            style={{ width: "100%", height: 280, objectFit: "cover", flexShrink: 0, scrollSnapAlign: "start" }}
+          />
+        ))}
+      </div>
+      {shown.length > 1 && (
+        <div style={{ position: "absolute", right: 12, bottom: 12, background: "rgba(0,0,0,.55)", color: "#fff", fontSize: 12, fontWeight: 600, borderRadius: 12, padding: "3px 11px" }}>
+          {idx + 1} / {shown.length}
+        </div>
+      )}
     </div>
   );
+}
+
+const DTONES = {
+  event: { bg: "#fdecf1", color: "#e6396a" },
+  price: { bg: "#f0f0f3", color: "#6b6b72" },
+  first: { bg: "#fff1e3", color: "#e3820f" },
+} as const;
+function DBadge({ tone, children }: { tone: keyof typeof DTONES; children: React.ReactNode }) {
+  const c = DTONES[tone];
+  return <span style={{ fontSize: 13, fontWeight: 600, color: c.color, background: c.bg, borderRadius: 7, padding: "4px 10px" }}>{children}</span>;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -175,50 +202,46 @@ function Info({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+const ROUTE_PRIORITY: ReservationRoute["type"][] = ["naver", "talktalk", "kakao", "instagram", "phone"];
+
 function ReserveBar({ routes, onReserve }: { routes: ReservationRoute[]; onReserve: (r: ReservationRoute) => void }) {
   if (!routes.length)
     return (
-      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, padding: 12, background: "#fff", borderTop: "1px solid #eee", textAlign: "center", color: "#bbb", fontSize: 13 }}>
+      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, padding: 16, background: "#fff", borderTop: "1px solid #eee", textAlign: "center", color: "#bbb", fontSize: 13, zIndex: 41 }}>
         예약 정보 없음
       </div>
     );
+  const sorted = [...routes].sort((a, b) => ROUTE_PRIORITY.indexOf(a.type) - ROUTE_PRIORITY.indexOf(b.type));
+  const primary = sorted[0];
+  const others = sorted.slice(1, 4);
+  const href = (r: ReservationRoute) => (r.type === "phone" ? `tel:${r.value}` : r.value);
   return (
-    <div
-      style={{
-        position: "fixed",
-        bottom: 0,
-        left: 0,
-        right: 0,
-        padding: 12,
-        background: "#fff",
-        borderTop: "1px solid #eee",
-        display: "flex",
-        gap: 8,
-        zIndex: 41,
-      }}
-    >
-      {routes.slice(0, 3).map((r) => (
-        <a
-          key={r.type}
-          href={r.type === "phone" ? `tel:${r.value}` : r.value}
-          target={r.type === "phone" ? undefined : "_blank"}
-          rel="noreferrer"
-          onClick={() => onReserve(r)}
-          style={{
-            flex: 1,
-            textAlign: "center",
-            padding: "12px 8px",
-            borderRadius: 12,
-            background: r.type === "naver" ? "#03c75a" : "#ec4899",
-            color: "#fff",
-            fontWeight: 700,
-            fontSize: 13,
-            textDecoration: "none",
-          }}
-        >
-          {ROUTE_ICON[r.type]} {r.label}
-        </a>
-      ))}
+    <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, padding: "12px 16px 16px", background: "#fff", borderTop: "1px solid #eee", zIndex: 41 }}>
+      {others.length > 0 && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 10, justifyContent: "center" }}>
+          {others.map((r) => (
+            <a
+              key={r.type}
+              href={href(r)}
+              target={r.type === "phone" ? undefined : "_blank"}
+              rel="noreferrer"
+              onClick={() => onReserve(r)}
+              style={{ padding: "7px 14px", borderRadius: 18, border: "1.5px solid #e5e5e5", color: "#555", fontSize: 13, fontWeight: 600, textDecoration: "none" }}
+            >
+              {r.label}
+            </a>
+          ))}
+        </div>
+      )}
+      <a
+        href={href(primary)}
+        target={primary.type === "phone" ? undefined : "_blank"}
+        rel="noreferrer"
+        onClick={() => onReserve(primary)}
+        style={{ display: "block", textAlign: "center", padding: 16, borderRadius: 14, background: "#1a1a1a", color: "#fff", fontWeight: 800, fontSize: 16, textDecoration: "none" }}
+      >
+        {primary.label}
+      </a>
     </div>
   );
 }

@@ -6,7 +6,7 @@ type Props = {
   onShopClick: (s: ShopSummary) => void;
 };
 
-/** 바텀시트 full 상태의 리스트뷰. */
+/** 샵 리스트 (시트 본문). */
 export function ShopListSheet({ shops, onShopClick }: Props) {
   if (shops.length === 0) {
     return (
@@ -18,20 +18,17 @@ export function ShopListSheet({ shops, onShopClick }: Props) {
     );
   }
   return (
-    <div>
-      <div style={{ fontSize: 12, color: "#888", padding: "4px 16px 8px" }}>
-        {shops.length.toLocaleString()}곳
-      </div>
-      {shops.slice(0, 120).map((s) => (
+    <div style={{ paddingBottom: 24 }}>
+      {shops.slice(0, 120).map((s, i) => (
         <div
           key={s.id}
           style={{
-            borderTop: "1px solid #f4f4f6",
+            borderTop: i === 0 ? "none" : "1px solid #f4f4f6",
             contentVisibility: "auto",
-            containIntrinsicSize: "0 92px",
+            containIntrinsicSize: "0 102px",
           } as React.CSSProperties}
         >
-          <ShopCard shop={s} onClick={onShopClick} variant="list" />
+          <ShopCard shop={s} onClick={onShopClick} />
         </div>
       ))}
       {shops.length > 120 && (

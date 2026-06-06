@@ -1,103 +1,69 @@
 import type { ShopSummary } from "../domain/shop";
-import { CATEGORY_COLORS } from "./theme";
 import { thumb } from "../../../shared/ui/image";
 
 type Props = {
   shop: ShopSummary;
   onClick: (s: ShopSummary) => void;
-  variant?: "list" | "rail";
 };
 
-/** 샵 미리보기 카드 — 리스트뷰/컬렉션 공용. */
-export function ShopCard({ shop, onClick, variant = "list" }: Props) {
-  const rail = variant === "rail";
+/** 샵 미리보기 카드 — 사진 + 이름 + 뱃지(이벤트/가격대/첫방문특가) + 리뷰·구. */
+export function ShopCard({ shop, onClick }: Props) {
   return (
     <button
       onClick={() => onClick(shop)}
       style={{
         display: "flex",
-        flexDirection: rail ? "column" : "row",
-        gap: rail ? 6 : 12,
-        width: rail ? 132 : "100%",
-        padding: rail ? 0 : "10px 16px",
+        gap: 14,
+        width: "100%",
+        padding: "14px 18px",
         border: "none",
         background: "transparent",
         textAlign: "left",
         cursor: "pointer",
+        alignItems: "center",
       }}
     >
-      <div style={{ position: "relative", flexShrink: 0 }}>
-        {shop.representativeImage ? (
-          <img
-            src={thumb(shop.representativeImage, rail ? 280 : 160)}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            style={{
-              width: rail ? 132 : 72,
-              height: rail ? 100 : 72,
-              borderRadius: 12,
-              objectFit: "cover",
-              background: "#f2f2f4",
-            }}
-          />
-        ) : (
-          <div
-            style={{
-              width: rail ? 132 : 72,
-              height: rail ? 100 : 72,
-              borderRadius: 12,
-              background: "#f2f2f4",
-            }}
-          />
-        )}
-        <Badges shop={shop} />
-      </div>
+      {shop.representativeImage ? (
+        <img
+          src={thumb(shop.representativeImage, 150)}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          style={{ width: 74, height: 74, borderRadius: 14, objectFit: "cover", background: "#f0f0f3", flexShrink: 0 }}
+        />
+      ) : (
+        <div style={{ width: 74, height: 74, borderRadius: 14, background: "#ededf0", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#bbb", fontSize: 12 }}>
+          사진
+        </div>
+      )}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div
-          style={{
-            fontWeight: 700,
-            fontSize: rail ? 13 : 15,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-        >
+        <div style={{ fontWeight: 700, fontSize: 17, color: "#1a1a1a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
           {shop.name}
         </div>
-        <div style={{ fontSize: 11, color: CATEGORY_COLORS[shop.category], marginTop: 2 }}>
-          {shop.category} · {shop.priceTier}
+        <div style={{ display: "flex", gap: 6, marginTop: 7, flexWrap: "wrap" }}>
+          {shop.hasEvent && <Badge tone="event">이벤트</Badge>}
+          <Badge tone="price">{shop.priceTier}</Badge>
+          {shop.firstVisitDeal && <Badge tone="first">첫방문 특가</Badge>}
         </div>
-        <div style={{ fontSize: 11, color: "#888", marginTop: rail ? 1 : 4 }}>
-          {shop.gu} · 리뷰 {shop.reviewCount.toLocaleString()}
+        <div style={{ fontSize: 13, color: "#9a9a9f", marginTop: 8 }}>
+          리뷰 {shop.reviewCount.toLocaleString()} · {shop.gu}
         </div>
       </div>
     </button>
   );
 }
 
-function Badges({ shop }: { shop: ShopSummary }) {
-  const badges: string[] = [];
-  if (shop.firstVisitDeal) badges.push("첫방문특가");
-  if (shop.hasEvent) badges.push("이벤트");
-  if (!badges.length) return null;
+const TONES = {
+  event: { bg: "#fdecf1", color: "#e6396a" },
+  price: { bg: "#f0f0f3", color: "#6b6b72" },
+  first: { bg: "#fff1e3", color: "#e3820f" },
+} as const;
+
+function Badge({ tone, children }: { tone: keyof typeof TONES; children: React.ReactNode }) {
+  const c = TONES[tone];
   return (
-    <div style={{ position: "absolute", top: 6, left: 6, display: "flex", gap: 4 }}>
-      {badges.map((b) => (
-        <span
-          key={b}
-          style={{
-            fontSize: 9,
-            fontWeight: 700,
-            color: "#fff",
-            background: b === "첫방문특가" ? "#ec4899" : "#ff8c42",
-            borderRadius: 4,
-            padding: "1px 4px",
-          }}
-        >
-          {b}
-        </span>
-      ))}
-    </div>
+    <span style={{ fontSize: 12, fontWeight: 600, color: c.color, background: c.bg, borderRadius: 7, padding: "3px 9px" }}>
+      {children}
+    </span>
   );
 }
