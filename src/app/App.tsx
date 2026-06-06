@@ -8,24 +8,39 @@ import { FilterModal } from "../contexts/catalog/ui/FilterModal";
 import { MissedAlertSheet } from "../contexts/lead/ui/MissedAlertSheet";
 import { BottomSheet } from "../shared/ui/BottomSheet";
 import { usecases } from "./composition-root";
+import { getUserPosition } from "../shared/platform/geolocation";
 import type { ShopSummary } from "../contexts/catalog/domain/shop";
+import type { Coordinate } from "../shared/domain/coordinate";
 
 export default function App() {
   const { shops, collections, loading, error, filter, setFilter } = useCatalog();
   const [snap, setSnap] = useState<"peek" | "full">("peek");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [highlightId, setHighlightId] = useState<string | undefined>();
+  const [mapCenter, setMapCenter] = useState<Coordinate | undefined>();
+  const [myPos, setMyPos] = useState<Coordinate | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [leadOpen, setLeadOpen] = useState(false);
 
+  function focus(shop: ShopSummary) {
+    setHighlightId(shop.id);
+    if (shop.coord?.lat && shop.coord?.lng) setMapCenter({ ...shop.coord });
+  }
   function openDetail(shop: ShopSummary) {
+    focus(shop);
     setSelectedId(shop.id);
     usecases.analytics.track({ event: "detail_view", shopId: shop.id, shopCategory: shop.category, shopDistrict: shop.gu });
   }
   function onPinClick(shop: ShopSummary) {
-    setHighlightId(shop.id);
     usecases.analytics.track({ event: "pin_click", shopId: shop.id, shopCategory: shop.category, shopDistrict: shop.gu });
     openDetail(shop);
+  }
+  async function handleLocate() {
+    const pos = await getUserPosition();
+    if (pos) {
+      setMyPos(pos);
+      setMapCenter({ ...pos });
+    }
   }
 
   const activeFilterCount =
@@ -56,7 +71,7 @@ export default function App() {
         {error ? (
           <div style={{ padding: 24, color: "#c00" }}>데이터 로드 실패: {error}</div>
         ) : (
-          <MapView shops={shops} highlightedId={highlightId} onPinClick={onPinClick} />
+          <MapView shops={shops} highlightedId={highlightId} center={mapCenter} myPos={myPos} onPinClick={onPinClick} />
         )}
       </div>
 
@@ -68,6 +83,15 @@ export default function App() {
           <ShopListSheet shops={shops} onShopClick={openDetail} />
         )}
       </BottomSheet>
+
+      {/* 내 위치 버튼 */}
+      <button
+        onClick={handleLocate}
+        aria-label="내 위치"
+        style={{ position: "absolute", right: 16, bottom: 296, zIndex: 16, width: 44, height: 44, borderRadius: 22, border: "1px solid #eee", background: "#fff", boxShadow: "0 3px 12px rgba(0,0,0,.15)", fontSize: 18 }}
+      >
+        📍
+      </button>
 
       {/* 취소석 플로팅 버튼 */}
       <button

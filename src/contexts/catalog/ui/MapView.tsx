@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { Map, MapMarker, MarkerClusterer, useKakaoLoader } from "react-kakao-maps-sdk";
 import type { ShopSummary } from "../domain/shop";
 import { CATEGORY_COLORS } from "./theme";
-import { SEOUL_CENTER } from "../../../shared/domain/coordinate";
+import { SEOUL_CENTER, type Coordinate } from "../../../shared/domain/coordinate";
 
 // 카카오 JS 키 — 콘솔 도메인 화이트리스트로 보호. env 우선.
 const KAKAO_KEY =
@@ -10,26 +10,32 @@ const KAKAO_KEY =
   "d8b9d4a2c02a527bf1711ecbcdf07b49";
 
 function pinDataUrl(color: string, highlighted = false): string {
-  const size = highlighted ? 24 : 14;
+  const size = highlighted ? 26 : 14;
   const stroke = highlighted ? 3 : 1.4;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><circle cx="${size / 2}" cy="${size / 2}" r="${size / 2 - stroke}" fill="${color}" stroke="white" stroke-width="${stroke}"/></svg>`;
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
+const MY_DOT =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22"><circle cx="11" cy="11" r="6" fill="#3b82f6" stroke="white" stroke-width="3"/><circle cx="11" cy="11" r="10" fill="#3b82f6" opacity="0.18"/></svg>`,
+  );
+
 type Props = {
   shops: ShopSummary[];
   highlightedId?: string;
-  center?: { lat: number; lng: number };
+  center?: Coordinate;
+  myPos?: Coordinate | null;
   onPinClick: (shop: ShopSummary) => void;
 };
 
-export function MapView({ shops, highlightedId, center, onPinClick }: Props) {
+export function MapView({ shops, highlightedId, center, myPos, onPinClick }: Props) {
   const [loading, error] = useKakaoLoader({
     appkey: KAKAO_KEY,
     libraries: ["clusterer"], // MarkerClusterer 사용 시 필수
   });
 
-  // 좌표 유효한 것만 (성능 위해 최대 표시 제한)
   const pins = useMemo(
     () => shops.filter((s) => s.coord?.lat && s.coord?.lng),
     [shops],
@@ -41,14 +47,15 @@ export function MapView({ shops, highlightedId, center, onPinClick }: Props) {
   return (
     <Map
       center={center ?? SEOUL_CENTER}
-      level={7}
+      isPanto={!!center}
+      level={center ? 5 : 8}
       style={{ width: "100%", height: "100%" }}
     >
       <MarkerClusterer averageCenter minLevel={6} disableClickZoom={false}>
         {pins.map((s) => {
           const hl = s.id === highlightedId;
           const color = CATEGORY_COLORS[s.category] ?? "#888";
-          const size = hl ? 24 : 14;
+          const size = hl ? 26 : 14;
           return (
             <MapMarker
               key={s.id}
@@ -56,10 +63,19 @@ export function MapView({ shops, highlightedId, center, onPinClick }: Props) {
               image={{ src: pinDataUrl(color, hl), size: { width: size, height: size } }}
               onClick={() => onPinClick(s)}
               title={s.name}
+              zIndex={hl ? 10 : 1}
             />
           );
         })}
       </MarkerClusterer>
+
+      {myPos && (
+        <MapMarker
+          position={myPos}
+          image={{ src: MY_DOT, size: { width: 22, height: 22 } }}
+          zIndex={20}
+        />
+      )}
     </Map>
   );
 }
