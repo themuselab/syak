@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { FilterCriteria } from "../domain/filters";
 import type { PriceTier } from "../domain/shop";
-import { CATEGORIES, type Category } from "../../../shared/domain/category";
+import { CATEGORIES, SERVICE_FILTERS, type Category } from "../../../shared/domain/category";
 
 const PRICE_TIERS: PriceTier[] = ["1만원대", "2만원대", "3만원대", "4만원이상"];
 
@@ -31,6 +31,14 @@ export function FilterModal({ initial, onApply, onClose }: Props) {
         : [...(d.priceTiers ?? []), p],
     }));
 
+  const toggleService = (s: string) =>
+    setDraft((d) => ({
+      ...d,
+      services: d.services?.includes(s)
+        ? d.services.filter((x) => x !== s)
+        : [...(d.services ?? []), s],
+    }));
+
   return (
     <div style={{ position: "absolute", inset: 0, zIndex: 50, background: "rgba(0,0,0,.35)" }} onClick={onClose}>
       <div
@@ -53,6 +61,14 @@ export function FilterModal({ initial, onApply, onClose }: Props) {
           {CATEGORIES.map((c) => (
             <Chip key={c} active={!!draft.categories?.includes(c)} onClick={() => toggleCat(c)}>
               {c}
+            </Chip>
+          ))}
+        </Group>
+
+        <Group title="시술">
+          {SERVICE_FILTERS.map((s) => (
+            <Chip key={s} active={!!draft.services?.includes(s)} onClick={() => toggleService(s)}>
+              {s}
             </Chip>
           ))}
         </Group>

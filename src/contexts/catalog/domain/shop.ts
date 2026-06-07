@@ -35,6 +35,7 @@ export interface ShopSummary {
   firstVisitDeal: boolean; // 첫방문 할인 메뉴 존재
   hasEvent: boolean; // 쿠폰/이벤트 보유
   reservable: boolean;
+  services: string[]; // 시술 태그(젤네일/패디/속눈썹…) — 예약 item에서 추출
 }
 
 export interface Menu {
@@ -64,6 +65,7 @@ export interface ShopDetail extends ShopSummary {
   reviews: Review[];
   reviewTotal: number;
   blogReviewTotal: number;
+  staffCount: number; // 예약 item(디자이너/메뉴) 수 — 2 이상이면 슬롯 "합산 기준" 안내
 }
 
 // ── 도메인 규칙 (순수 함수) ───────────────────────────────

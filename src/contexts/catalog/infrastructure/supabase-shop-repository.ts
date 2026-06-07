@@ -5,7 +5,7 @@ import type { ShopSummary, ShopDetail } from "../domain/shop";
 import { sbFetch } from "../../../shared/platform/supabase";
 
 const SUMMARY_COLS =
-  "id,name,category,categories,gu,lat,lng,representative_image,review_count,price_tier,min_price,first_visit_deal,has_event,reservable";
+  "id,name,category,categories,gu,lat,lng,representative_image,review_count,price_tier,min_price,first_visit_deal,has_event,reservable,services";
 const PAGE = 1000;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -24,6 +24,7 @@ function toSummary(r: any): ShopSummary {
     firstVisitDeal: r.first_visit_deal,
     hasEvent: r.has_event,
     reservable: r.reservable,
+    services: r.services ?? [],
   };
 }
 
@@ -53,11 +54,19 @@ export class SupabaseShopRepository implements ShopRepository {
 
   async byId(id: string): Promise<ShopDetail | null> {
     if (this.detailCache.has(id)) return this.detailCache.get(id)!;
-    const res = await sbFetch(`shops?id=eq.${encodeURIComponent(id)}&select=detail`);
+    const res = await sbFetch(`shops?id=eq.${encodeURIComponent(id)}&select=detail,services,item_ids`);
     let detail: ShopDetail | null = null;
     if (res.ok || res.status === 206) {
       const rows = await res.json();
-      detail = (rows[0]?.detail as ShopDetail) ?? null;
+      const row = rows[0];
+      if (row?.detail) {
+        // detail jsonb엔 services/staffCount가 없음 → 컬럼에서 합쳐줌
+        detail = {
+          ...(row.detail as ShopDetail),
+          services: row.services ?? row.detail.services ?? [],
+          staffCount: Array.isArray(row.item_ids) ? row.item_ids.length : 0,
+        };
+      }
     }
     this.detailCache.set(id, detail);
     return detail;

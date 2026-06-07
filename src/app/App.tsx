@@ -131,6 +131,7 @@ export default function App() {
   const activeFilterCount =
     (filter.categories?.length ?? 0) +
     (filter.priceTiers?.length ?? 0) +
+    (filter.services?.length ?? 0) +
     (filter.hasEventOnly ? 1 : 0) +
     (filter.firstVisitOnly ? 1 : 0) +
     (filter.reservableOnly ? 1 : 0);

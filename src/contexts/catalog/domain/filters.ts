@@ -7,6 +7,7 @@ export interface FilterCriteria {
   gu?: string;
   categories?: Category[];
   priceTiers?: PriceTier[];
+  services?: string[]; // 시술(젤네일/패디…) — 하나라도 제공하면 통과
   reservableOnly?: boolean;
   hasEventOnly?: boolean;
   firstVisitOnly?: boolean;
@@ -16,6 +17,7 @@ export function matchesFilter(shop: ShopSummary, c: FilterCriteria): boolean {
   if (c.gu && shop.gu !== c.gu) return false;
   if (c.categories?.length && !c.categories.some((cat) => shop.categories.includes(cat))) return false;
   if (c.priceTiers?.length && !c.priceTiers.includes(shop.priceTier)) return false;
+  if (c.services?.length && !c.services.some((sv) => shop.services?.includes(sv))) return false;
   if (c.reservableOnly && !shop.reservable) return false;
   if (c.hasEventOnly && !shop.hasEvent) return false;
   if (c.firstVisitOnly && !shop.firstVisitDeal) return false;

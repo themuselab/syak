@@ -1,5 +1,5 @@
 import type { ShopSummary } from "../domain/shop";
-import { thumb } from "../../../shared/ui/image";
+import { thumb, FALLBACK_IMAGE, onImgError } from "../../../shared/ui/image";
 
 type Props = {
   shop: ShopSummary;
@@ -23,19 +23,14 @@ export function ShopCard({ shop, onClick }: Props) {
         alignItems: "center",
       }}
     >
-      {shop.representativeImage ? (
-        <img
-          src={thumb(shop.representativeImage, 150)}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          style={{ width: 74, height: 74, borderRadius: 14, objectFit: "cover", background: "#f0f0f3", flexShrink: 0 }}
-        />
-      ) : (
-        <div style={{ width: 74, height: 74, borderRadius: 14, background: "#ededf0", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#bbb", fontSize: 12 }}>
-          사진
-        </div>
-      )}
+      <img
+        src={thumb(shop.representativeImage, 150) ?? FALLBACK_IMAGE}
+        onError={onImgError}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        style={{ width: 74, height: 74, borderRadius: 14, objectFit: "cover", background: "#f0f0f3", flexShrink: 0 }}
+      />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 700, fontSize: 17, color: "#1a1a1a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
           {shop.name}

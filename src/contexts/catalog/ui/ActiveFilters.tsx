@@ -15,6 +15,9 @@ export function ActiveFilters({ filter, onChange }: Props) {
   (filter.priceTiers ?? []).forEach((p) =>
     chips.push({ label: p, remove: () => onChange({ ...filter, priceTiers: filter.priceTiers!.filter((x) => x !== p) }) }),
   );
+  (filter.services ?? []).forEach((s) =>
+    chips.push({ label: s, remove: () => onChange({ ...filter, services: filter.services!.filter((x) => x !== s) }) }),
+  );
   if (filter.hasEventOnly) chips.push({ label: "이벤트", remove: () => onChange({ ...filter, hasEventOnly: false }) });
   if (filter.firstVisitOnly) chips.push({ label: "첫방문특가", remove: () => onChange({ ...filter, firstVisitOnly: false }) });
   if (filter.reservableOnly) chips.push({ label: "예약가능", remove: () => onChange({ ...filter, reservableOnly: false }) });

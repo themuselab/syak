@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useShopDetail } from "./hooks/useShopDetail";
-import { thumbW } from "../../../shared/ui/image";
+import { thumbW, FALLBACK_IMAGE, onImgError } from "../../../shared/ui/image";
 import { usecases } from "../../../app/composition-root";
 import type { ReservationRoute } from "../domain/shop";
 
@@ -82,13 +82,23 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
               <DBadge tone="price">{detail.priceTier}</DBadge>
               {detail.firstVisitDeal && <DBadge tone="first">첫방문 특가</DBadge>}
             </div>
+            {detail.services.length > 0 && (
+              <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                {detail.services.map((s) => (
+                  <span key={s} style={{ fontSize: 12, fontWeight: 600, color: "#7a7a82", background: "#f3f3f5", borderRadius: 6, padding: "3px 9px" }}>
+                    {s}
+                  </span>
+                ))}
+              </div>
+            )}
             <div style={{ fontSize: 13, color: "#666", marginTop: 10 }}>
               ⭐ 리뷰 {detail.reviewTotal.toLocaleString()} · 블로그 {detail.blogReviewTotal.toLocaleString()}
             </div>
 
             {/* 내일 빈 시간 */}
             {slots && slots.length > 0 && (
-              <SlotsCard slots={slots} naverUrl={detail.reservationRoutes.find((r) => r.type === "naver")?.value}
+              <SlotsCard slots={slots} staffCount={detail.staffCount}
+                naverUrl={detail.reservationRoutes.find((r) => r.type === "naver")?.value}
                 onPick={() => onReserveClick(detail.id, { type: "naver", label: "네이버로 예약", value: "" })} />
             )}
 
@@ -166,9 +176,11 @@ function Gallery({ images }: { images: string[] }) {
   const [idx, setIdx] = useState(0);
   if (!images.length)
     return (
-      <div style={{ height: 260, background: "#ededf0", display: "flex", alignItems: "center", justifyContent: "center", color: "#bbb", fontSize: 15 }}>
-        이미지 갤러리
-      </div>
+      <img
+        src={FALLBACK_IMAGE}
+        alt=""
+        style={{ width: "100%", height: 280, objectFit: "cover", display: "block", background: "#fdeef2" }}
+      />
     );
   const shown = images.slice(0, 10);
   return (
@@ -181,6 +193,7 @@ function Gallery({ images }: { images: string[] }) {
           <img
             key={i}
             src={thumbW(src, 700)}
+            onError={onImgError}
             alt=""
             loading="lazy"
             decoding="async"
@@ -207,7 +220,7 @@ function DBadge({ tone, children }: { tone: keyof typeof DTONES; children: React
   return <span style={{ fontSize: 13, fontWeight: 600, color: c.color, background: c.bg, borderRadius: 7, padding: "4px 10px" }}>{children}</span>;
 }
 
-function SlotsCard({ slots, naverUrl, onPick }: { slots: string[]; naverUrl?: string; onPick: () => void }) {
+function SlotsCard({ slots, naverUrl, staffCount, onPick }: { slots: string[]; naverUrl?: string; staffCount?: number; onPick: () => void }) {
   return (
     <div style={{ marginTop: 18, padding: 14, borderRadius: 14, background: "#fdeef2", border: "1px solid #f6c6dc" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -229,6 +242,7 @@ function SlotsCard({ slots, naverUrl, onPick }: { slots: string[]; naverUrl?: st
         ))}
       </div>
       <div style={{ fontSize: 11, color: "#a4567e", marginTop: 11, lineHeight: 1.55 }}>
+        {staffCount && staffCount >= 2 ? "여러 디자이너 빈자리를 합산한 기준이에요. " : ""}
         매시간 자동 수집 기준이라 실제 예약 상황과 다를 수 있어요.
         <br />
         시간을 누르면 네이버 예약으로 이동해요.

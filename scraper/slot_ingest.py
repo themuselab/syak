@@ -46,10 +46,11 @@ def sb(method, path, body=None, prefer=None, extra_headers=None):
 
 
 def load_targets():
-    """biz_id 있는 가게 = 온라인 예약 가능. 페이지네이션."""
+    """biz_id 있는 가게 = 온라인 예약 가능. 페이지네이션.
+    item_ids(전 디자이너/서비스) × biz_type 포함."""
     out, frm = [], 0
     while True:
-        st, hdr, body = sb("GET", "shops?biz_id=not.is.null&select=id,biz_id,item_id&order=id",
+        st, hdr, body = sb("GET", "shops?biz_id=not.is.null&select=id,biz_id,item_id,biz_type,item_ids&order=id",
                            prefer="count=exact", extra_headers={"Range": f"{frm}-{frm+999}"})
         rows = json.loads(body)
         out.extend(rows)
@@ -60,15 +61,36 @@ def load_targets():
     return out
 
 
-def fetch_slots(biz_id, item_id, start_ymd, end_ymd):
+def expand_tasks(targets):
+    """샵 → (shop_id, biz_type, biz_id, item_id) 작업으로 펼침.
+    item_ids(전 디자이너) 있으면 전부, 없으면 단일 item_id 폴백."""
+    tasks = []
+    for t in targets:
+        bt = t.get("biz_type") or 13
+        items = t.get("item_ids") or ([t["item_id"]] if t.get("item_id") else [])
+        for it in items:
+            if it:
+                tasks.append({"id": t["id"], "biz_type": bt, "biz_id": t["biz_id"], "item_id": str(it)})
+    return tasks
+
+
+def fetch_slots(biz_type, biz_id, item_id, start_ymd, end_ymd, tries=3):
     pl = {"operationName": "hourlySchedule", "variables": {"scheduleParams": {
-        "businessTypeId": 13, "businessId": biz_id, "bizItemId": item_id,
+        "businessTypeId": int(biz_type), "businessId": biz_id, "bizItemId": item_id,
         "startDateTime": f"{start_ymd}T00:00:00", "endDateTime": f"{end_ymd}T23:59:59",
         "fixedTime": True, "includesHolidaySchedules": True}}, "query": QUERY}
-    req = urllib.request.Request(GQL, data=json.dumps(pl).encode(), method="POST",
-                                 headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=20) as r:
-        raw = json.loads(r.read())
+    raw = None
+    for attempt in range(tries):
+        try:
+            req = urllib.request.Request(GQL, data=json.dumps(pl).encode(), method="POST",
+                                         headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                raw = json.loads(r.read())
+            break
+        except Exception:
+            if attempt == tries - 1:
+                raise
+            time.sleep(0.5 * (attempt + 1))
     sch = (raw.get("data") or {}).get("schedule")
     if not sch:
         return []
@@ -93,21 +115,27 @@ def main():
     end_ymd = (today + timedelta(days=DAYS - 1)).strftime("%Y-%m-%d")
 
     targets = load_targets()
-    print(f"📡 슬롯 수집: {len(targets)}곳, {start_ymd} ~ {end_ymd}")
+    tasks = expand_tasks(targets)
+    print(f"📡 슬롯 수집: {len(targets)}곳 / item(디자이너·서비스) {len(tasks)}건, {start_ymd} ~ {end_ymd}")
 
-    rows, ok, err = [], 0, 0
+    # (shop_id, date, time) 기준 합집합 — 한 디자이너라도 비면 그 시간 예약가능
+    seen = {}
+    ok = err = 0
     t0 = time.time()
-    with ThreadPoolExecutor(max_workers=8) as ex:
-        futs = {ex.submit(fetch_slots, t["biz_id"], t["item_id"], start_ymd, end_ymd): t for t in targets}
+    with ThreadPoolExecutor(max_workers=16) as ex:
+        futs = {ex.submit(fetch_slots, t["biz_type"], t["biz_id"], t["item_id"], start_ymd, end_ymd): t for t in tasks}
         for fut in as_completed(futs):
             t = futs[fut]
             try:
                 for d, tm in fut.result():
-                    rows.append({"shop_id": t["id"], "biz_id": t["biz_id"], "item_id": t["item_id"],
-                                 "slot_date": d, "start_time": tm})
+                    key = (t["id"], d, tm)
+                    if key not in seen:  # 합집합 dedupe (DB PK도 동일하게 합치지만 전송량 절약)
+                        seen[key] = {"shop_id": t["id"], "biz_id": t["biz_id"], "item_id": t["item_id"],
+                                     "slot_date": d, "start_time": tm}
                 ok += 1
             except Exception:
                 err += 1
+    rows = list(seen.values())
     print(f"   조회: 성공 {ok} 실패 {err} | 빈 슬롯 {len(rows)}행 | {time.time()-t0:.1f}초")
 
     # 날짜창 비우고 새로 INSERT
