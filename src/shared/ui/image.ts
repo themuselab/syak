@@ -21,11 +21,10 @@ export function thumb(url: string | null | undefined, size = 160): string | unde
   return url;
 }
 
-/** 가로형(갤러리)용 — 폭 기준 리사이즈 */
-export function thumbW(url: string | null | undefined, width = 600): string | undefined {
+/** 가로형(갤러리)용.
+ * ⚠️ ldb-phinf/naverbooking-phinf CDN은 type=w{N}·f{N}_{N}(대형) 리사이즈를 미지원→404.
+ *    원본과 f150_150만 200이라, 갤러리는 원본 URL을 그대로 사용(쿼리만 제거). */
+export function thumbW(url: string | null | undefined, _width = 600): string | undefined {
   if (!url) return undefined;
-  if (url.includes("pstatic")) {
-    return `${url.split("?")[0]}?type=w${width}`;
-  }
-  return url;
+  return url.split("?")[0];
 }
