@@ -54,17 +54,18 @@ export class SupabaseShopRepository implements ShopRepository {
 
   async byId(id: string): Promise<ShopDetail | null> {
     if (this.detailCache.has(id)) return this.detailCache.get(id)!;
-    const res = await sbFetch(`shops?id=eq.${encodeURIComponent(id)}&select=detail,services,item_ids`);
+    const res = await sbFetch(`shops?id=eq.${encodeURIComponent(id)}&select=detail,services,item_ids,slot_summary`);
     let detail: ShopDetail | null = null;
     if (res.ok || res.status === 206) {
       const rows = await res.json();
       const row = rows[0];
       if (row?.detail) {
-        // detail jsonb엔 services/staffCount가 없음 → 컬럼에서 합쳐줌
+        // detail jsonb엔 services/staffCount/slotSummary가 없음 → 컬럼에서 합쳐줌
         detail = {
           ...(row.detail as ShopDetail),
           services: row.services ?? row.detail.services ?? [],
           staffCount: Array.isArray(row.item_ids) ? row.item_ids.length : 0,
+          slotSummary: Array.isArray(row.slot_summary) ? row.slot_summary : [],
         };
       }
     }

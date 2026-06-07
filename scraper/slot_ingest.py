@@ -7,7 +7,7 @@
 env: SUPABASE_URL, SUPABASE_SECRET_KEY  (GitHub Actions Secrets에서 주입)
 로컬 실행 시엔 같은 폴더의 .env 도 읽음.
 """
-import json, os, sys, time, urllib.request, urllib.error
+import json, os, re, sys, time, urllib.request, urllib.error
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -50,7 +50,7 @@ def load_targets():
     item_ids(전 디자이너/서비스) × biz_type 포함."""
     out, frm = [], 0
     while True:
-        st, hdr, body = sb("GET", "shops?biz_id=not.is.null&select=id,biz_id,item_id,biz_type,item_ids&order=id",
+        st, hdr, body = sb("GET", "shops?biz_id=not.is.null&select=id,biz_id,item_id,biz_type,item_ids,items&order=id",
                            prefer="count=exact", extra_headers={"Range": f"{frm}-{frm+999}"})
         rows = json.loads(body)
         out.extend(rows)
@@ -107,19 +107,32 @@ def fetch_slots(biz_type, biz_id, item_id, start_ymd, end_ymd, tries=3):
     return rows
 
 
+def clean_item_name(name):
+    """item 이름 정리 — '[지점]' 류 접두 제거 + 길이 컷."""
+    n = (name or "").strip()
+    n = re.sub(r"^\[[^\]]*\]\s*", "", n)        # 앞 [..] 제거
+    n = re.sub(r"\s*-\s*.*?(원|이벤트).*$", "", n)  # ' - 29,000원' 류 꼬리 제거
+    n = n.strip(" ·-")
+    return (n[:14] or "예약")
+
+
 def main():
     # KST 기준 오늘 (Actions는 UTC라 +9)
     kst = timezone(timedelta(hours=9))
     today = datetime.now(kst).date()
     start_ymd = today.strftime("%Y-%m-%d")
+    tomorrow_ymd = (today + timedelta(days=1)).strftime("%Y-%m-%d")
     end_ymd = (today + timedelta(days=DAYS - 1)).strftime("%Y-%m-%d")
 
     targets = load_targets()
     tasks = expand_tasks(targets)
+    # shop_id → {item_id: 이름} (상세 표시용)
+    name_map = {t["id"]: {str(it.get("id")): it.get("name") for it in (t.get("items") or [])} for t in targets}
     print(f"📡 슬롯 수집: {len(targets)}곳 / item(디자이너·서비스) {len(tasks)}건, {start_ymd} ~ {end_ymd}")
 
     # (shop_id, date, time) 기준 합집합 — 한 디자이너라도 비면 그 시간 예약가능
     seen = {}
+    item_tmrw = {}  # (shop_id, item_id) → 내일 빈 시간 set {"14:00", ...}
     ok = err = 0
     t0 = time.time()
     with ThreadPoolExecutor(max_workers=16) as ex:
@@ -132,6 +145,9 @@ def main():
                     if key not in seen:  # 합집합 dedupe (DB PK도 동일하게 합치지만 전송량 절약)
                         seen[key] = {"shop_id": t["id"], "biz_id": t["biz_id"], "item_id": t["item_id"],
                                      "slot_date": d, "start_time": tm}
+                    if d == tomorrow_ymd:
+                        ik = (t["id"], t["item_id"])
+                        item_tmrw.setdefault(ik, set()).add(tm[:5])  # "14:00:00" → "14:00"
                 ok += 1
             except Exception:
                 err += 1
@@ -145,6 +161,25 @@ def main():
         sb("POST", "slots", body=rows[i:i+500], prefer="return=minimal,resolution=merge-duplicates")
         inserted += len(rows[i:i+500])
     print(f"✅ Supabase 저장: {inserted}행 ({start_ymd}~{end_ymd})")
+
+    # 상세용 item별 "내일" 빈 시간 요약 → shops.slot_summary 벌크 업서트
+    # 같은 이름(디자이너/메뉴)끼리 시간 합치고, 자리 많은 순 top6 · item당 시간 top12
+    summary = {}  # shop_id → {name: set(times)}
+    for (sid, iid), times in item_tmrw.items():
+        nm = clean_item_name(name_map.get(sid, {}).get(iid) or "예약")
+        summary.setdefault(sid, {}).setdefault(nm, set()).update(times)
+    sum_rows = []
+    for tg in targets:  # 대상 전체 갱신(자리 없는 샵은 [] 로 초기화 → 묵은 데이터 제거)
+        sid = tg["id"]
+        by_name = summary.get(sid, {})
+        items = sorted(({"name": n, "times": sorted(ts)[:12]} for n, ts in by_name.items()),
+                       key=lambda x: -len(x["times"]))[:6]
+        sum_rows.append({"id": sid, "slot_summary": items})
+    up = 0
+    for i in range(0, len(sum_rows), 500):
+        sb("POST", "shops", body=sum_rows[i:i+500], prefer="return=minimal,resolution=merge-duplicates")
+        up += len(sum_rows[i:i+500])
+    print(f"✅ slot_summary 갱신: {up}곳")
 
 
 if __name__ == "__main__":

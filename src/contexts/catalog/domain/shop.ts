@@ -66,6 +66,7 @@ export interface ShopDetail extends ShopSummary {
   reviewTotal: number;
   blogReviewTotal: number;
   staffCount: number; // 예약 item(디자이너/메뉴) 수 — 2 이상이면 슬롯 "합산 기준" 안내
+  slotSummary: { name: string; times: string[] }[]; // 내일 기준 item(디자이너/메뉴)별 빈 시간
 }
 
 // ── 도메인 규칙 (순수 함수) ───────────────────────────────

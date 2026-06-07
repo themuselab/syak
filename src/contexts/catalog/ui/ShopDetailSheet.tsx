@@ -97,7 +97,7 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
 
             {/* 내일 빈 시간 */}
             {slots && slots.length > 0 && (
-              <SlotsCard slots={slots} staffCount={detail.staffCount}
+              <SlotsCard slots={slots} staffCount={detail.staffCount} slotSummary={detail.slotSummary}
                 naverUrl={detail.reservationRoutes.find((r) => r.type === "naver")?.value}
                 onPick={() => onReserveClick(detail.id, { type: "naver", label: "네이버로 예약", value: "" })} />
             )}
@@ -220,7 +220,8 @@ function DBadge({ tone, children }: { tone: keyof typeof DTONES; children: React
   return <span style={{ fontSize: 13, fontWeight: 600, color: c.color, background: c.bg, borderRadius: 7, padding: "4px 10px" }}>{children}</span>;
 }
 
-function SlotsCard({ slots, naverUrl, staffCount, onPick }: { slots: string[]; naverUrl?: string; staffCount?: number; onPick: () => void }) {
+function SlotsCard({ slots, naverUrl, staffCount, slotSummary, onPick }: { slots: string[]; naverUrl?: string; staffCount?: number; slotSummary?: { name: string; times: string[] }[]; onPick: () => void }) {
+  const summary = (slotSummary ?? []).filter((s) => s.times && s.times.length > 0);
   return (
     <div style={{ marginTop: 18, padding: 14, borderRadius: 14, background: "#fdeef2", border: "1px solid #f6c6dc" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -241,8 +242,30 @@ function SlotsCard({ slots, naverUrl, staffCount, onPick }: { slots: string[]; n
           </a>
         ))}
       </div>
+      {summary.length > 0 && (
+        <div style={{ marginTop: 13, paddingTop: 12, borderTop: "1px solid #f6c6dc" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#a4567e", marginBottom: 9 }}>내일 디자이너·메뉴별 빈 시간</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {summary.map((s, i) => (
+              <div key={i}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "#5a3247", marginBottom: 5 }}>{s.name}</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                  {s.times.slice(0, 10).map((t) => (
+                    <span key={t} style={{ fontSize: 12, fontWeight: 600, color: "#c2477e", background: "#fff", border: "1px solid #f3c2d8", borderRadius: 13, padding: "3px 9px" }}>
+                      {t}
+                    </span>
+                  ))}
+                  {s.times.length > 10 && (
+                    <span style={{ fontSize: 12, color: "#b06a8c", padding: "3px 4px" }}>+{s.times.length - 10}</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div style={{ fontSize: 11, color: "#a4567e", marginTop: 11, lineHeight: 1.55 }}>
-        {staffCount && staffCount >= 2 ? "여러 디자이너 빈자리를 합산한 기준이에요. " : ""}
+        {summary.length === 0 && staffCount && staffCount >= 2 ? "여러 디자이너 빈자리를 합산한 기준이에요. " : ""}
         매시간 자동 수집 기준이라 실제 예약 상황과 다를 수 있어요.
         <br />
         시간을 누르면 네이버 예약으로 이동해요.
