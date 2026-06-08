@@ -19,7 +19,16 @@ export const GYEONGGI_SI = [
   "광명시", "하남시", "구리시", "과천시", "의정부시", "김포시", "시흥시", "군포시", "의왕시",
 ] as const;
 
-export type District = (typeof SEOUL_GU)[number] | (typeof GYEONGGI_SI)[number];
+// 인천 광역시 (저장 라벨과 동일)
+export const INCHEON_GU = [
+  "인천 중구", "인천 동구", "인천 미추홀구", "인천 연수구", "인천 남동구",
+  "인천 부평구", "인천 계양구", "인천 서구", "인천 강화군",
+] as const;
+
+export type District =
+  | (typeof SEOUL_GU)[number]
+  | (typeof GYEONGGI_SI)[number]
+  | (typeof INCHEON_GU)[number];
 
 // 예약 item에서 추출한 시술 태그 (backfill_booking.py의 SERVICE_TAGS 라벨과 동일)
 // "젤네일 되는 샵 찾기" 발견 필터용

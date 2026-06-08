@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SheetRef } from "react-modal-sheet";
 import { useCatalog } from "../contexts/catalog/ui/hooks/useCatalog";
 import { MapView } from "../contexts/catalog/ui/MapView";
@@ -30,8 +30,9 @@ function applyChip(list: ShopSummary[], chip: ChipKey | null): ShopSummary[] {
 }
 
 export default function App() {
-  const { shops, allShops, loading, error, filter, setFilter } = useCatalog();
+  const { shops, loading, error, filter, setFilter, loadBounds, showShops, searchByName } = useCatalog();
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
+  const [nameResults, setNameResults] = useState<ShopSummary[]>([]);
   const sheetRef = useRef<SheetRef>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [highlightId, setHighlightId] = useState<string | undefined>();
@@ -84,7 +85,7 @@ export default function App() {
     return () => document.removeEventListener("visibilitychange", onHide);
   }, []);
 
-  // 첫 진입: 내 위치로 지도 이동 + 주변 가게 우선
+  // 첫 진입: 내 위치로 지도 이동 (그 영역 샵은 지도 idle 시 자동 로드)
   useEffect(() => {
     getUserPosition().then((pos) => {
       if (pos) {
@@ -95,24 +96,51 @@ export default function App() {
   }, []);
 
   const q = query.trim();
+
+  // 이름 검색 (서버측, 디바운스). 비우면 다시 지도 영역 모드로.
+  const qRef = useRef(q);
+  qRef.current = q;
+  useEffect(() => {
+    if (!q) {
+      setNameResults([]);
+      return;
+    }
+    const t = setTimeout(() => {
+      searchByName(q).then((r) => {
+        if (qRef.current === q) setNameResults(r);
+      });
+    }, 300);
+    return () => clearTimeout(t);
+  }, [q, searchByName]);
+
+  // 지도 영역(bounds) 변하면 그 영역 샵 로드 — 검색 중일 땐 스킵(egress 절약)
+  const onBoundsChanged = useCallback(
+    (b: Parameters<typeof loadBounds>[0]) => {
+      if (!qRef.current) loadBounds(b);
+    },
+    [loadBounds],
+  );
+
   const displayed = useMemo(() => {
-    const base = q ? allShops.filter((s) => s.name.includes(q)) : shops;
+    const base = q ? nameResults : shops;
     let list = applyChip(base, chip);
     if (openShopIds) list = list.filter((s) => openShopIds.has(s.id)); // 맞춤찾기: 그 시간 빈 샵만
     if (myPos && chip !== "reviews") {
       list = [...list].sort((a, b) => distanceMeters(myPos, a.coord) - distanceMeters(myPos, b.coord));
     }
     return list;
-  }, [q, allShops, shops, chip, openShopIds, myPos]);
+  }, [q, nameResults, shops, chip, openShopIds, myPos]);
 
-  function selectRegion(gu?: string) {
+  async function selectRegion(gu?: string) {
     setFilter({ ...filter, gu });
     if (gu) {
-      const inGu = allShops.filter((s) => s.gu === gu && s.coord?.lat && s.coord?.lng);
-      if (inGu.length) {
-        const lat = inGu.reduce((a, s) => a + s.coord.lat, 0) / inGu.length;
-        const lng = inGu.reduce((a, s) => a + s.coord.lng, 0) / inGu.length;
+      const list = await usecases.catalog.byGu(gu);
+      const pts = list.filter((s) => s.coord?.lat && s.coord?.lng);
+      if (pts.length) {
+        const lat = pts.reduce((a, s) => a + s.coord.lat, 0) / pts.length;
+        const lng = pts.reduce((a, s) => a + s.coord.lng, 0) / pts.length;
         setMapCenter({ lat, lng });
+        showShops(list); // 즉시 표시(지도 idle이 영역으로 다듬음)
       }
     }
   }
@@ -192,7 +220,7 @@ export default function App() {
         {error ? (
           <div style={{ padding: 24, paddingTop: 140, color: "#c00" }}>데이터 로드 실패: {error}</div>
         ) : (
-          <MapView shops={displayed} highlightedId={highlightId} center={mapCenter} myPos={myPos} onPinClick={onPinClick} />
+          <MapView shops={displayed} highlightedId={highlightId} center={mapCenter} myPos={myPos} onPinClick={onPinClick} onBoundsChanged={onBoundsChanged} />
         )}
       </div>
 

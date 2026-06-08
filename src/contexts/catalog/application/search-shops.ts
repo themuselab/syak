@@ -1,21 +1,18 @@
-// Catalog 유스케이스 — 필터 조건으로 샵 검색. 포트만 의존.
-import type { ShopRepository } from "../ports/shop-repository";
-import { applyFilter, type FilterCriteria } from "../domain/filters";
+// Catalog 유스케이스 — 뷰포트/지역/이름 기반 조회. 포트만 의존.
+import type { ShopRepository, Bounds } from "../ports/shop-repository";
 import type { ShopSummary } from "../domain/shop";
 
-export function makeSearchShops(repo: ShopRepository) {
-  return async function searchShops(criteria: FilterCriteria = {}): Promise<ShopSummary[]> {
-    const all = await repo.all();
-    return applyFilter(all, criteria);
-  };
+/** 지도 영역 안의 샵 (egress 절약 — 보이는 곳만) */
+export function makeSearchInBounds(repo: ShopRepository) {
+  return (b: Bounds, limit?: number): Promise<ShopSummary[]> => repo.inBounds(b, limit);
 }
 
-/** 이름으로 검색 (홈 상단 검색바) */
+/** 지역(구/시) 선택 */
+export function makeSearchByGu(repo: ShopRepository) {
+  return (gu: string, limit?: number): Promise<ShopSummary[]> => repo.byGu(gu, limit);
+}
+
+/** 이름 검색 (서버측) */
 export function makeSearchByName(repo: ShopRepository) {
-  return async function searchByName(query: string): Promise<ShopSummary[]> {
-    const q = query.trim();
-    if (!q) return [];
-    const all = await repo.all();
-    return all.filter((s) => s.name.includes(q)).slice(0, 30);
-  };
+  return (query: string): Promise<ShopSummary[]> => repo.searchByName(query);
 }

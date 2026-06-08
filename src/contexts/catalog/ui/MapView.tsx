@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Map, MapMarker, useKakaoLoader } from "react-kakao-maps-sdk";
 import type { ShopSummary } from "../domain/shop";
+import type { Bounds } from "../ports/shop-repository";
 import { CATEGORY_COLORS } from "./theme";
 import { SEOUL_CENTER, type Coordinate } from "../../../shared/domain/coordinate";
 
@@ -31,9 +32,10 @@ type Props = {
   center?: Coordinate;
   myPos?: Coordinate | null;
   onPinClick: (shop: ShopSummary) => void;
+  onBoundsChanged?: (b: Bounds) => void;
 };
 
-export function MapView({ shops, highlightedId, center, myPos, onPinClick }: Props) {
+export function MapView({ shops, highlightedId, center, myPos, onPinClick, onBoundsChanged }: Props) {
   const [loading, error] = useKakaoLoader({
     appkey: KAKAO_KEY,
     libraries: ["clusterer"], // MarkerClusterer 사용 시 필수
@@ -42,9 +44,26 @@ export function MapView({ shops, highlightedId, center, myPos, onPinClick }: Pro
   const clustererRef = useRef<KakaoAny>(null);
   const markersById = useRef<Record<string, KakaoAny>>({});
   const imagesRef = useRef<Record<string, KakaoAny>>({});
-  // 최신 onPinClick을 리스너에서 참조 (재바인딩 없이)
+  // 최신 콜백을 리스너에서 참조 (재바인딩 없이)
   const onClickRef = useRef(onPinClick);
   onClickRef.current = onPinClick;
+  const onBoundsRef = useRef(onBoundsChanged);
+  onBoundsRef.current = onBoundsChanged;
+
+  // 지도 이동/줌이 멈추면(idle) 현재 영역(bounds)을 보고 → 그 영역 샵만 로드
+  useEffect(() => {
+    const kakao = (window as KakaoAny).kakao;
+    if (!map || !kakao?.maps) return;
+    const emit = () => {
+      const bd = map.getBounds();
+      const sw = bd.getSouthWest();
+      const ne = bd.getNorthEast();
+      onBoundsRef.current?.({ swLat: sw.getLat(), swLng: sw.getLng(), neLat: ne.getLat(), neLng: ne.getLng() });
+    };
+    kakao.maps.event.addListener(map, "idle", emit);
+    emit(); // 최초 1회
+    return () => kakao.maps.event.removeListener(map, "idle", emit);
+  }, [map]);
 
   // 네이티브 클러스터러 — 마커 전체를 React 밖에서 관리 + 프레임 단위 점진 추가(블로킹 방지)
   useEffect(() => {

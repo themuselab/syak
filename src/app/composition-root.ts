@@ -2,8 +2,7 @@
 // 나머지 코드는 포트(인터페이스)에만 의존한다. 어댑터 교체는 여기 한 곳만 바꾸면 된다.
 
 import { SupabaseShopRepository } from "../contexts/catalog/infrastructure/supabase-shop-repository";
-import { makeSearchShops, makeSearchByName } from "../contexts/catalog/application/search-shops";
-import { makeListCollections } from "../contexts/catalog/application/list-collections";
+import { makeSearchInBounds, makeSearchByGu, makeSearchByName } from "../contexts/catalog/application/search-shops";
 import { makeGetShopDetail } from "../contexts/catalog/application/get-shop-detail";
 
 import { SupabaseAnalyticsSink } from "../contexts/analytics/infrastructure/supabase-analytics-sink";
@@ -27,9 +26,9 @@ const slotProvider = new SupabaseSlotProvider(); // 매 정각 배치가 채운 
 // ── 유스케이스 묶음 (앱 전체가 이걸 통해 도메인 사용) ──────
 export const usecases = {
   catalog: {
-    searchShops: makeSearchShops(shopRepo),
+    inBounds: makeSearchInBounds(shopRepo),
+    byGu: makeSearchByGu(shopRepo),
     searchByName: makeSearchByName(shopRepo),
-    listCollections: makeListCollections(shopRepo),
     getShopDetail: makeGetShopDetail(shopRepo),
   },
   analytics: {

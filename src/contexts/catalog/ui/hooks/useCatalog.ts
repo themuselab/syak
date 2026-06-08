@@ -1,60 +1,56 @@
-// 유스케이스 ↔ React 연결 훅. UI는 이 훅으로만 데이터에 접근.
-import { useCallback, useEffect, useMemo, useState } from "react";
+// 유스케이스 ↔ React 연결 훅. 뷰포트(지도 영역) 기반 로딩 — egress 절약.
+import { useCallback, useMemo, useState } from "react";
 import { usecases } from "../../../../app/composition-root";
 import type { ShopSummary } from "../../domain/shop";
-import type { FilterCriteria, Collection } from "../../domain/filters";
+import { matchesFilter } from "../../domain/filters";
+import type { FilterCriteria } from "../../domain/filters";
+import type { Bounds } from "../../ports/shop-repository";
 
 export function useCatalog() {
-  const [allShops, setAllShops] = useState<ShopSummary[]>([]);
+  const [loaded, setLoaded] = useState<ShopSummary[]>([]); // 현재 화면에 들고 있는 샵
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterCriteria>({});
 
-  useEffect(() => {
-    let alive = true;
-    usecases.catalog
-      .searchShops({})
-      .then((shops) => {
-        if (alive) {
-          setAllShops(shops);
-          setLoading(false);
-        }
-      })
-      .catch((e) => {
-        if (alive) {
-          setError(String(e));
-          setLoading(false);
-        }
-      });
-    return () => {
-      alive = false;
-    };
+  // 지도 영역 안의 샵 로드 (지도 이동 시)
+  const loadBounds = useCallback(async (b: Bounds): Promise<void> => {
+    try {
+      const s = await usecases.catalog.inBounds(b);
+      setLoaded(s);
+      setError(null);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const shops = useMemo(
-    () => allShops.filter((s) => matches(s, filter)),
-    [allShops, filter],
-  );
+  // 지역(구/시) 선택 → 그 지역 샵 로드. 호출측에서 중심 계산하라고 결과 반환.
+  const loadGu = useCallback(async (gu: string): Promise<ShopSummary[]> => {
+    setLoading(true);
+    try {
+      const s = await usecases.catalog.byGu(gu);
+      setLoaded(s);
+      setError(null);
+      return s;
+    } catch (e) {
+      setError(String(e));
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const collections: Collection[] = useMemo(
-    () => (allShops.length ? buildLocalCollections(allShops, filter) : []),
-    [allShops, filter],
-  );
+  // 직접 세팅 (이름검색 결과 등)
+  const showShops = useCallback((s: ShopSummary[]) => {
+    setLoaded(s);
+    setLoading(false);
+  }, []);
 
-  const searchByName = useCallback(
-    (q: string) => usecases.catalog.searchByName(q),
-    [],
-  );
+  const searchByName = useCallback((q: string) => usecases.catalog.searchByName(q), []);
 
-  return { shops, allShops, collections, loading, error, filter, setFilter, searchByName };
-}
+  // 필터(분야/가격/시술/혜택) 적용 — 로드된 셋 안에서 클라이언트 필터
+  const shops = useMemo(() => loaded.filter((s) => matchesFilter(s, filter)), [loaded, filter]);
 
-// domain filter를 클라이언트에서도 재사용 (동일 규칙)
-import { matchesFilter as matches } from "../../domain/filters";
-import { buildCollections, applyFilter } from "../../domain/filters";
-
-function buildLocalCollections(all: ShopSummary[], filter: FilterCriteria): Collection[] {
-  // 지역만 반영해서 컬렉션 구성 (가격/혜택 필터는 컬렉션 자체가 분류라 제외)
-  const scoped = applyFilter(all, { gu: filter.gu });
-  return buildCollections(scoped);
+  return { shops, loaded, loading, error, filter, setFilter, loadBounds, loadGu, showShops, searchByName };
 }
