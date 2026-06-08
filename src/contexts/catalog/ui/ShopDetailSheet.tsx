@@ -4,10 +4,20 @@ import { thumbW, FALLBACK_IMAGE, onImgError } from "../../../shared/ui/image";
 import { usecases } from "../../../app/composition-root";
 import type { ReservationRoute } from "../domain/shop";
 
+function ymd(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function todayYmd(): string {
+  return ymd(new Date());
+}
 function tomorrowYmd(): string {
   const d = new Date();
   d.setDate(d.getDate() + 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return ymd(d);
+}
+function nowHHMM(): string {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 type Props = {
@@ -20,11 +30,19 @@ type Props = {
 export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
   const { detail, loading } = useShopDetail(shopId);
   const [slots, setSlots] = useState<string[] | null>(null);
+  const [todaySlots, setTodaySlots] = useState<string[] | null>(null);
 
   useEffect(() => {
     let alive = true;
     usecases.reservation.getShopSlots(shopId, tomorrowYmd()).then((s) => {
       if (alive) setSlots(s);
+    });
+    // 오늘 남은 예약 시간 (지난 시간은 제외)
+    usecases.reservation.getShopSlots(shopId, todayYmd()).then((s) => {
+      if (alive) {
+        const now = nowHHMM();
+        setTodaySlots(s.map((t) => t.slice(0, 5)).filter((t) => t >= now));
+      }
     });
     return () => {
       alive = false;
@@ -105,7 +123,16 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
             {/* 기본 정보 */}
             <Section title="정보">
               <Info label="주소" value={detail.roadAddress} />
-              <Info label="영업" value={detail.hoursText} />
+              <Info
+                label="오늘 예약"
+                value={
+                  todaySlots === null
+                    ? "확인 중…"
+                    : todaySlots.length > 0
+                      ? todaySlots.slice(0, 16).join("  ") + (todaySlots.length > 16 ? `  +${todaySlots.length - 16}` : "")
+                      : "오늘은 예약 마감이에요"
+                }
+              />
               <Info label="전화" value={detail.phone} />
               {detail.instagram && (
                 <Info
@@ -293,9 +320,11 @@ function Info({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-const ROUTE_PRIORITY: ReservationRoute["type"][] = ["naver", "talktalk", "kakao", "instagram", "phone"];
+// 네이버 톡톡은 제외 — 예약(네이버 예약) 중심으로 정확하게
+const ROUTE_PRIORITY: ReservationRoute["type"][] = ["naver", "kakao", "instagram", "phone"];
 
-function ReserveBar({ routes, onReserve }: { routes: ReservationRoute[]; onReserve: (r: ReservationRoute) => void }) {
+function ReserveBar({ routes: allRoutes, onReserve }: { routes: ReservationRoute[]; onReserve: (r: ReservationRoute) => void }) {
+  const routes = allRoutes.filter((r) => r.type !== "talktalk");
   if (!routes.length)
     return (
       <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, padding: 16, background: "#fff", borderTop: "1px solid #eee", textAlign: "center", color: "#bbb", fontSize: 13, zIndex: 41 }}>
