@@ -19,6 +19,15 @@ export interface ReservationRoute {
   value: string; // URL 또는 전화번호
 }
 
+/** 지도 핀 전용 경량 타입 — 마커+클릭에 필요한 최소 필드만 (대량 전송 절약) */
+export interface ShopPin {
+  id: string;
+  name: string;
+  category: Category;
+  gu: string;
+  coord: Coordinate;
+}
+
 /** 리스트/지도 카드에 쓰는 요약 */
 export interface ShopSummary {
   id: string;

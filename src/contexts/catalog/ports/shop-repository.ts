@@ -1,5 +1,5 @@
 // Catalog 포트 — 읽기(Query) 전용 인터페이스. 구현은 infrastructure/.
-import type { ShopSummary, ShopDetail } from "../domain/shop";
+import type { ShopSummary, ShopDetail, ShopPin } from "../domain/shop";
 
 export interface Bounds {
   swLat: number;
@@ -9,8 +9,10 @@ export interface Bounds {
 }
 
 export interface ShopRepository {
-  /** 지도 영역(뷰포트) 안의 샵만 — egress 절약. 인기순 상한. */
+  /** 지도 영역(뷰포트) 안의 샵 요약 — 리스트용. 인기순 상한(작게). */
   inBounds(b: Bounds, limit?: number): Promise<ShopSummary[]>;
+  /** 지도 영역 안의 경량 핀 — 지도 마커용. 대량 상한(밀집도). */
+  pinsInBounds(b: Bounds, limit?: number): Promise<ShopPin[]>;
   /** id 목록으로 조회 (맞춤찾기: 그 시간 빈 샵들) */
   byIds(ids: string[]): Promise<ShopSummary[]>;
   /** 지역(구/시) 선택 시 그 지역 샵 (인기순 상한) */

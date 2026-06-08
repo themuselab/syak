@@ -2,9 +2,14 @@
 import type { ShopRepository, Bounds } from "../ports/shop-repository";
 import type { ShopSummary } from "../domain/shop";
 
-/** 지도 영역 안의 샵 (egress 절약 — 보이는 곳만) */
+/** 지도 영역 안의 샵 요약 (리스트용) */
 export function makeSearchInBounds(repo: ShopRepository) {
   return (b: Bounds, limit?: number): Promise<ShopSummary[]> => repo.inBounds(b, limit);
+}
+
+/** 지도 영역 안의 경량 핀 (지도 마커용 — 밀집도) */
+export function makePinsInBounds(repo: ShopRepository) {
+  return (b: Bounds, limit?: number) => repo.pinsInBounds(b, limit);
 }
 
 /** 지역(구/시) 선택 */

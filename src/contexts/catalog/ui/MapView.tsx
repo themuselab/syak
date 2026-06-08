@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Map, MapMarker, useKakaoLoader } from "react-kakao-maps-sdk";
-import type { ShopSummary } from "../domain/shop";
+import type { ShopPin } from "../domain/shop";
 import type { Bounds } from "../ports/shop-repository";
 import { CATEGORY_COLORS } from "./theme";
 import { SEOUL_CENTER, type Coordinate } from "../../../shared/domain/coordinate";
@@ -27,11 +27,11 @@ const MY_DOT =
   );
 
 type Props = {
-  shops: ShopSummary[];
+  shops: ShopPin[];
   highlightedId?: string;
   center?: Coordinate;
   myPos?: Coordinate | null;
-  onPinClick: (shop: ShopSummary) => void;
+  onPinClick: (shop: ShopPin) => void;
   onBoundsChanged?: (b: Bounds) => void;
 };
 

@@ -1,7 +1,7 @@
 // Catalog 어댑터 — Supabase(PostgREST)에서 카탈로그 조회.
 // 뷰포트 기반: 지도 영역 안의 샵만 로드 (egress 절약). byId(): detail jsonb.
 import type { ShopRepository, Bounds } from "../ports/shop-repository";
-import type { ShopSummary, ShopDetail } from "../domain/shop";
+import type { ShopSummary, ShopDetail, ShopPin } from "../domain/shop";
 import { sbFetch } from "../../../shared/platform/supabase";
 
 const SUMMARY_COLS =
@@ -56,6 +56,22 @@ export class SupabaseShopRepository implements ShopRepository {
       out.push(...(await this.rows(q)).map(toSummary));
     }
     return out;
+  }
+
+  async pinsInBounds(b: Bounds, limit = 5000): Promise<ShopPin[]> {
+    // 마커에 필요한 최소 컬럼만 → 1핀 ~70B (요약의 1/6)
+    const q =
+      `shops?select=id,name,category,gu,lat,lng` +
+      `&lat=gte.${b.swLat}&lat=lte.${b.neLat}&lng=gte.${b.swLng}&lng=lte.${b.neLng}` +
+      `&order=review_count.desc&limit=${limit}`;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (await this.rows(q)).map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      category: r.category,
+      gu: r.gu,
+      coord: { lat: r.lat, lng: r.lng },
+    }));
   }
 
   async byGu(gu: string, limit = 600): Promise<ShopSummary[]> {

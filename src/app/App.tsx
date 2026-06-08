@@ -15,7 +15,7 @@ import { ShopListSkeleton } from "../shared/ui/Skeleton";
 import { usecases } from "./composition-root";
 import { getUserPosition } from "../shared/platform/geolocation";
 import { distanceMeters, type Coordinate } from "../shared/domain/coordinate";
-import type { ShopSummary } from "../contexts/catalog/domain/shop";
+import type { ShopSummary, ShopPin } from "../contexts/catalog/domain/shop";
 
 function applyChip(list: ShopSummary[], chip: ChipKey | null): ShopSummary[] {
   if (!chip) return list;
@@ -30,7 +30,7 @@ function applyChip(list: ShopSummary[], chip: ChipKey | null): ShopSummary[] {
 }
 
 export default function App() {
-  const { shops, loading, error, filter, setFilter, loadBounds, showShops, searchByName } = useCatalog();
+  const { shops, pins, loading, error, filter, setFilter, loadBounds, showShops, searchByName } = useCatalog();
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
   const [nameResults, setNameResults] = useState<ShopSummary[]>([]);
   const sheetRef = useRef<SheetRef>(null);
@@ -145,13 +145,13 @@ export default function App() {
     }
   }
 
-  function openDetail(shop: ShopSummary) {
+  function openDetail(shop: ShopPin) {
     setHighlightId(shop.id);
     if (shop.coord?.lat && shop.coord?.lng) setMapCenter({ ...shop.coord });
     setSelectedId(shop.id);
     usecases.analytics.track({ event: "detail_view", shopId: shop.id, shopCategory: shop.category, shopDistrict: shop.gu });
   }
-  function onPinClick(shop: ShopSummary) {
+  function onPinClick(shop: ShopPin) {
     usecases.analytics.track({ event: "pin_click", shopId: shop.id, shopCategory: shop.category, shopDistrict: shop.gu });
     openDetail(shop);
   }
@@ -163,6 +163,10 @@ export default function App() {
     (filter.hasEventOnly ? 1 : 0) +
     (filter.firstVisitOnly ? 1 : 0) +
     (filter.reservableOnly ? 1 : 0);
+
+  // 지도: 필터/검색/맞춤 없으면 경량 핀 대량 표시(밀집도), 있으면 필터된 요약 표시
+  const filtering = !!q || !!chip || !!openShopIds || activeFilterCount > 0;
+  const mapShops: ShopPin[] = filtering ? displayed : pins;
 
   const regionLabel = filter.gu ? filter.gu.replace(/구$/, "") : "지역";
 
@@ -220,7 +224,7 @@ export default function App() {
         {error ? (
           <div style={{ padding: 24, paddingTop: 140, color: "#c00" }}>데이터 로드 실패: {error}</div>
         ) : (
-          <MapView shops={displayed} highlightedId={highlightId} center={mapCenter} myPos={myPos} onPinClick={onPinClick} onBoundsChanged={onBoundsChanged} />
+          <MapView shops={mapShops} highlightedId={highlightId} center={mapCenter} myPos={myPos} onPinClick={onPinClick} onBoundsChanged={onBoundsChanged} />
         )}
       </div>
 
