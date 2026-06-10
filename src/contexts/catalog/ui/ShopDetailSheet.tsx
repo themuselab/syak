@@ -23,7 +23,7 @@ function nowHHMM(): string {
 type Props = {
   shopId: string;
   onClose: () => void;
-  onReserveClick: (shopId: string, route: ReservationRoute) => void;
+  onReserveClick: (shopId: string, route: ReservationRoute, slot?: { date: string; time: string }) => void;
 };
 
 /** 샵 상세 — 전체화면 시트. 이미지/정보/메뉴/이벤트/예약루트. */
@@ -117,7 +117,7 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
             {slots && slots.length > 0 && (
               <SlotsCard slots={slots} staffCount={detail.staffCount} slotSummary={detail.slotSummary}
                 naverUrl={detail.reservationRoutes.find((r) => r.type === "naver")?.value}
-                onPick={() => onReserveClick(detail.id, { type: "naver", label: "네이버로 예약", value: "" })} />
+                onPick={(t) => onReserveClick(detail.id, { type: "naver", label: "네이버로 예약", value: "" }, { date: tomorrowYmd(), time: t })} />
             )}
 
             {/* 기본 정보 */}
@@ -247,7 +247,7 @@ function DBadge({ tone, children }: { tone: keyof typeof DTONES; children: React
   return <span style={{ fontSize: 13, fontWeight: 600, color: c.color, background: c.bg, borderRadius: 7, padding: "4px 10px" }}>{children}</span>;
 }
 
-function SlotsCard({ slots, naverUrl, staffCount, slotSummary, onPick }: { slots: string[]; naverUrl?: string; staffCount?: number; slotSummary?: { name: string; times: string[] }[]; onPick: () => void }) {
+function SlotsCard({ slots, naverUrl, staffCount, slotSummary, onPick }: { slots: string[]; naverUrl?: string; staffCount?: number; slotSummary?: { name: string; times: string[] }[]; onPick: (time: string) => void }) {
   const summary = (slotSummary ?? []).filter((s) => s.times && s.times.length > 0);
   return (
     <div style={{ marginTop: 18, padding: 14, borderRadius: 14, background: "#fdeef2", border: "1px solid #f6c6dc" }}>
@@ -262,7 +262,7 @@ function SlotsCard({ slots, naverUrl, staffCount, slotSummary, onPick }: { slots
             href={naverUrl || "#"}
             target="_blank"
             rel="noreferrer"
-            onClick={onPick}
+            onClick={() => onPick(t)}
             style={{ padding: "7px 13px", borderRadius: 18, background: "#fff", color: "#ec4899", border: "1.5px solid #ec4899", fontSize: 13, fontWeight: 700, textDecoration: "none" }}
           >
             {t}

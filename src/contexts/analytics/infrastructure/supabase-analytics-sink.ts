@@ -32,6 +32,8 @@ export class SupabaseAnalyticsSink implements AnalyticsSink {
           entry: event.entry ?? null,
           source: event.source ?? null,
           ms: event.ms ?? null,
+          slot_date: event.slotDate ?? null,
+          slot_time: event.slotTime ?? null,
           ts: Date.now(),
           platform: this.platform,
         }),

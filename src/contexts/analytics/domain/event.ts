@@ -22,4 +22,6 @@ export interface AnalyticsEvent {
   entry?: EntryRoute;
   source?: string; // 진입 키워드/소스 (utm_source, src 등)
   ms?: number; // dwell 또는 time-to-click
+  slotDate?: string; // reserve_click: 클릭한 슬롯 날짜 (전환 추적용)
+  slotTime?: string; // reserve_click: 클릭한 슬롯 시간 "14:00"
 }

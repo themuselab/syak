@@ -43,10 +43,59 @@ def sb_get(path):
     return rows
 
 
+GQL = "https://m.booking.naver.com/graphql?opName=hourlySchedule"
+SCHED_Q = ("query h($p: ScheduleParams){schedule(input:$p){bizItemSchedule{hourly{unitStartTime bookingCount stock}}}}")
+
+
+def naver_slot_booked(bt, biz, items, date, hhmm):
+    """클릭한 슬롯(date hhmm)이 네이버에서 지금 예약 걸렸나 → bookingCount>0면 True."""
+    for it in (items or [])[:6]:
+        pl = {"operationName": "h", "variables": {"p": {"businessTypeId": int(bt or 13), "businessId": str(biz),
+              "bizItemId": str(it), "startDateTime": f"{date}T00:00:00", "endDateTime": f"{date}T23:59:59",
+              "fixedTime": True, "includesHolidaySchedules": True}}, "query": SCHED_Q}
+        try:
+            req = urllib.request.Request(GQL, data=json.dumps(pl).encode(), method="POST",
+                                         headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=15) as r:
+                hourly = (((json.loads(r.read()).get("data") or {}).get("schedule") or {})
+                          .get("bizItemSchedule", {}) or {}).get("hourly") or []
+            for h in hourly:
+                if h.get("unitStartTime", "")[11:16] == hhmm and (h.get("bookingCount") or 0) > 0:
+                    return True
+        except Exception:
+            pass
+    return False
+
+
+def conversions(events):
+    """reserve_click 중 슬롯 기록된 것 → 그 슬롯이 지금 예약 찼는지 (클릭 20분 경과분만)."""
+    picks = [e for e in events if e["event"] == "reserve_click" and e.get("slot_date") and e.get("slot_time")]
+    now = datetime.now(timezone.utc)
+    cache, converted, checked = {}, 0, 0
+    for e in picks:
+        try:
+            ct = datetime.fromisoformat((e.get("created_at") or "").replace("Z", "+00:00"))
+            if (now - ct).total_seconds() < 1200:  # 클릭 20분 지난 것만
+                continue
+        except Exception:
+            continue
+        sid = e["shop_id"]
+        if sid not in cache:
+            rows = sb_get(f"shops?id=eq.{sid}&select=biz_id,item_ids,biz_type")
+            cache[sid] = rows[0] if rows else None
+        sh = cache[sid]
+        if not sh or not sh.get("biz_id"):
+            continue
+        checked += 1
+        if naver_slot_booked(sh.get("biz_type"), sh["biz_id"], sh.get("item_ids"), e["slot_date"], e["slot_time"][:5]):
+            converted += 1
+    return converted, checked, len(picks)
+
+
 def main():
     kst = timezone(timedelta(hours=9))
     since = (datetime.now(timezone.utc) - timedelta(hours=HOURS)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    events = sb_get(f"events?created_at=gte.{since}&select=session_id,event,source,ms,route")
+    events = sb_get(f"events?created_at=gte.{since}&select=session_id,event,source,ms,route,slot_date,slot_time,shop_id,created_at")
     leads = sb_get(f"leads?created_at=gte.{since}&select=id")
 
     sessions = {e["session_id"] for e in events if e.get("session_id")}
@@ -60,6 +109,11 @@ def main():
 
     src_text = "\n".join(f"· {s}: {n}" for s, n in sources.most_common(6)) or "—"
 
+    # 예약 전환(추정): 클릭한 슬롯이 네이버에서 실제 예약 찼는지
+    conv, conv_checked, conv_picks = conversions(events)
+    conv_text = (f"{conv}건 (확인 {conv_checked})" if conv_checked else
+                 (f"슬롯클릭 {conv_picks} (집계 대기)" if conv_picks else "—"))
+
     embed = {
         "title": f"📊 샥 검증 리포트 (최근 {HOURS}시간)",
         "color": 0xEC4899,
@@ -70,6 +124,7 @@ def main():
             {"name": "가게 클릭", "value": f"{shop_clicks}회", "inline": True},
             {"name": "예약 버튼 클릭", "value": f"{reserve_clicks}회", "inline": True},
             {"name": "└ 네이버 예약", "value": f"{naver_clicks}회", "inline": True},
+            {"name": "🎯 예약 전환(추정)", "value": conv_text, "inline": True},
             {"name": "진입 키워드", "value": src_text, "inline": False},
         ],
         "footer": {"text": f"기준: {datetime.now(kst).strftime('%Y-%m-%d %H:%M')} KST"},
