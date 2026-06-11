@@ -71,7 +71,7 @@ def conversions(events):
     """reserve_click 중 슬롯 기록된 것 → 그 슬롯이 지금 예약 찼는지 (클릭 20분 경과분만)."""
     picks = [e for e in events if e["event"] == "reserve_click" and e.get("slot_date") and e.get("slot_time")]
     now = datetime.now(timezone.utc)
-    cache, converted, checked = {}, 0, 0
+    cache, checked, hits = {}, 0, []
     for e in picks:
         try:
             ct = datetime.fromisoformat((e.get("created_at") or "").replace("Z", "+00:00"))
@@ -81,15 +81,17 @@ def conversions(events):
             continue
         sid = e["shop_id"]
         if sid not in cache:
-            rows = sb_get(f"shops?id=eq.{sid}&select=biz_id,item_ids,biz_type")
+            rows = sb_get(f"shops?id=eq.{sid}&select=name,biz_id,item_ids,biz_type")
             cache[sid] = rows[0] if rows else None
         sh = cache[sid]
         if not sh or not sh.get("biz_id"):
             continue
         checked += 1
         if naver_slot_booked(sh.get("biz_type"), sh["biz_id"], sh.get("item_ids"), e["slot_date"], e["slot_time"][:5]):
-            converted += 1
-    return converted, checked, len(picks)
+            d = e["slot_date"]  # 2026-06-12 → 6/12
+            label = f"{int(d[5:7])}/{int(d[8:10])} {e['slot_time'][:5]}"
+            hits.append(f"{(sh.get('name') or '?')[:12]} {label}")
+    return len(hits), checked, len(picks), hits
 
 
 def main():
@@ -110,9 +112,16 @@ def main():
     src_text = "\n".join(f"· {s}: {n}" for s, n in sources.most_common(6)) or "—"
 
     # 예약 전환(추정): 클릭한 슬롯이 네이버에서 실제 예약 찼는지
-    conv, conv_checked, conv_picks = conversions(events)
-    conv_text = (f"{conv}건 (확인 {conv_checked})" if conv_checked else
-                 (f"슬롯클릭 {conv_picks} (집계 대기)" if conv_picks else "—"))
+    conv, conv_checked, conv_picks, conv_hits = conversions(events)
+    if conv:
+        shown = ", ".join(conv_hits[:6]) + (f" 외 {conv - 6}건" if conv > 6 else "")
+        conv_text = f"{conv}건 (확인 {conv_checked})\n({shown})"
+    elif conv_checked:
+        conv_text = f"0건 (확인 {conv_checked})"
+    elif conv_picks:
+        conv_text = f"슬롯클릭 {conv_picks} (집계 대기)"
+    else:
+        conv_text = "—"
 
     embed = {
         "title": f"📊 샥 검증 리포트 (최근 {HOURS}시간)",
@@ -124,7 +133,7 @@ def main():
             {"name": "가게 클릭", "value": f"{shop_clicks}회", "inline": True},
             {"name": "예약 버튼 클릭", "value": f"{reserve_clicks}회", "inline": True},
             {"name": "└ 네이버 예약", "value": f"{naver_clicks}회", "inline": True},
-            {"name": "🎯 예약 전환(추정)", "value": conv_text, "inline": True},
+            {"name": "🎯 예약 전환(추정)", "value": conv_text, "inline": False},
             {"name": "진입 키워드", "value": src_text, "inline": False},
         ],
         "footer": {"text": f"기준: {datetime.now(kst).strftime('%Y-%m-%d %H:%M')} KST"},
