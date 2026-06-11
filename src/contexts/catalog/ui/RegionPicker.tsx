@@ -1,4 +1,4 @@
-import { SEOUL_GU, GYEONGGI_SI, INCHEON_GU } from "../../../shared/domain/category";
+import { SEOUL_GU, GYEONGGI_SI, INCHEON_GU, BUSAN_GU } from "../../../shared/domain/category";
 
 type Props = {
   current?: string;
@@ -47,10 +47,18 @@ export function RegionPicker({ current, onSelect, onClose }: Props) {
           ))}
         </div>
         <p style={sectionLabel}>인천</p>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 18 }}>
           {INCHEON_GU.map((g) => (
             <Chip key={g} active={current === g} onClick={() => sel(g)}>
               {g.replace("인천 ", "")}
+            </Chip>
+          ))}
+        </div>
+        <p style={sectionLabel}>부산</p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {BUSAN_GU.map((g) => (
+            <Chip key={g} active={current === g} onClick={() => sel(g)}>
+              {g.replace("부산 ", "")}
             </Chip>
           ))}
         </div>
