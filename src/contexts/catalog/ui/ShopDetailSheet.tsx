@@ -23,7 +23,11 @@ function nowHHMM(): string {
 type Props = {
   shopId: string;
   onClose: () => void;
-  onReserveClick: (shopId: string, route: ReservationRoute, slot?: { date: string; time: string }) => void;
+  onReserveClick: (
+    shopId: string,
+    route: ReservationRoute,
+    meta?: { slot?: { date: string; time: string }; district?: string; category?: string },
+  ) => void;
 };
 
 /** 샵 상세 — 전체화면 시트. 이미지/정보/메뉴/이벤트/예약루트. */
@@ -117,7 +121,7 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
             {slots && slots.length > 0 && (
               <SlotsCard slots={slots} staffCount={detail.staffCount} slotSummary={detail.slotSummary}
                 naverUrl={detail.reservationRoutes.find((r) => r.type === "naver")?.value}
-                onPick={(t) => onReserveClick(detail.id, { type: "naver", label: "네이버로 예약", value: "" }, { date: tomorrowYmd(), time: t })} />
+                onPick={(t) => onReserveClick(detail.id, { type: "naver", label: "네이버로 예약", value: "" }, { slot: { date: tomorrowYmd(), time: t }, district: detail.gu, category: detail.category })} />
             )}
 
             {/* 기본 정보 */}
@@ -192,7 +196,7 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
           </div>
 
           {/* 예약하기 (고정 하단) */}
-          <ReserveBar routes={detail.reservationRoutes} onReserve={(r) => onReserveClick(detail.id, r)} />
+          <ReserveBar routes={detail.reservationRoutes} onReserve={(r) => onReserveClick(detail.id, r, { district: detail.gu, category: detail.category })} />
         </>
       )}
     </div>

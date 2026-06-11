@@ -263,7 +263,7 @@ export default function App() {
         <ShopDetailSheet
           shopId={selectedId}
           onClose={() => setSelectedId(null)}
-          onReserveClick={(shopId, route, slot) => usecases.analytics.track({ event: "reserve_click", shopId, route: route.type, slotDate: slot?.date, slotTime: slot?.time })}
+          onReserveClick={(shopId, route, meta) => usecases.analytics.track({ event: "reserve_click", shopId, route: route.type, slotDate: meta?.slot?.date, slotTime: meta?.slot?.time, shopDistrict: meta?.district, shopCategory: meta?.category })}
         />
       )}
       {filterOpen && (

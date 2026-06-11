@@ -97,7 +97,7 @@ def conversions(events):
 def main():
     kst = timezone(timedelta(hours=9))
     since = (datetime.now(timezone.utc) - timedelta(hours=HOURS)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    events = sb_get(f"events?created_at=gte.{since}&select=session_id,event,source,ms,route,slot_date,slot_time,shop_id,created_at")
+    events = sb_get(f"events?created_at=gte.{since}&select=session_id,event,source,ms,route,slot_date,slot_time,shop_id,shop_district,created_at")
     leads = sb_get(f"leads?created_at=gte.{since}&select=id")
 
     sessions = {e["session_id"] for e in events if e.get("session_id")}
@@ -110,6 +110,11 @@ def main():
     naver_clicks = sum(1 for e in events if e["event"] == "reserve_click" and e.get("route") == "naver")
 
     src_text = "\n".join(f"· {s}: {n}" for s, n in sources.most_common(6)) or "—"
+
+    # 지역별 예약클릭 (어느 지역 샵에서 예약하러 갔나)
+    region_clicks = Counter(e.get("shop_district") for e in events
+                            if e["event"] == "reserve_click" and e.get("shop_district"))
+    region_text = "\n".join(f"· {g}: {n}" for g, n in region_clicks.most_common(8)) or "—"
 
     # 예약 전환(추정): 클릭한 슬롯이 네이버에서 실제 예약 찼는지
     conv, conv_checked, conv_picks, conv_hits = conversions(events)
@@ -134,7 +139,8 @@ def main():
             {"name": "예약 버튼 클릭", "value": f"{reserve_clicks}회", "inline": True},
             {"name": "└ 네이버 예약", "value": f"{naver_clicks}회", "inline": True},
             {"name": "🎯 예약 전환(추정)", "value": conv_text, "inline": False},
-            {"name": "진입 키워드", "value": src_text, "inline": False},
+            {"name": "📍 지역별 예약클릭", "value": region_text, "inline": True},
+            {"name": "진입 키워드", "value": src_text, "inline": True},
         ],
         "footer": {"text": f"기준: {datetime.now(kst).strftime('%Y-%m-%d %H:%M')} KST"},
     }
