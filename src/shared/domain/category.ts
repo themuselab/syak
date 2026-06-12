@@ -18,6 +18,9 @@ export const GYEONGGI_SI = [
   "수원시",
   "성남시", "고양시", "부천시", "안양시", "안산시", "남양주시", "용인시",
   "광명시", "하남시", "구리시", "과천시", "의정부시", "김포시", "시흥시", "군포시", "의왕시",
+  // 경기 나머지
+  "화성시", "평택시", "파주시", "광주시", "오산시", "이천시", "안성시",
+  "여주시", "양평군", "포천시", "동두천시", "양주시", "가평군", "연천군",
 ] as const;
 
 // 인천 광역시 (저장 라벨과 동일)
@@ -33,11 +36,18 @@ export const BUSAN_GU = [
   "부산 연제구", "부산 수영구", "부산 사상구", "부산 기장군",
 ] as const;
 
+// 대구 광역시 (저장 라벨 "대구 {구}")
+export const DAEGU_GU = [
+  "대구 중구", "대구 동구", "대구 서구", "대구 남구", "대구 북구",
+  "대구 수성구", "대구 달서구", "대구 달성군",
+] as const;
+
 export type District =
   | (typeof SEOUL_GU)[number]
   | (typeof GYEONGGI_SI)[number]
   | (typeof INCHEON_GU)[number]
-  | (typeof BUSAN_GU)[number];
+  | (typeof BUSAN_GU)[number]
+  | (typeof DAEGU_GU)[number];
 
 // 예약 item에서 추출한 시술 태그 (backfill_booking.py의 SERVICE_TAGS 라벨과 동일)
 // "젤네일 되는 샵 찾기" 발견 필터용
