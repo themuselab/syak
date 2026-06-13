@@ -15,7 +15,7 @@ from pathlib import Path
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
-DAYS = 7  # 오늘부터 7일치
+DAYS = 3  # 오늘부터 3일치 (앱은 주로 '내일'만 봄 → 7일은 과함, DB 절약)
 
 # env (Actions의 os.environ 우선, 없으면 로컬 .env)
 ENV = dict(os.environ)
@@ -154,8 +154,26 @@ def main():
     rows = list(seen.values())
     print(f"   조회: 성공 {ok} 실패 {err} | 빈 슬롯 {len(rows)}행 | {time.time()-t0:.1f}초")
 
-    # 날짜창 비우고 새로 INSERT
-    sb("DELETE", f"slots?slot_date=gte.{start_ymd}", prefer="return=minimal")
+    # 슬롯 삭제 (무료티어 statement timeout 회피: 날짜별 + 시간버킷 + 재시도)
+    def sb_del(path, tries=4):
+        for i in range(tries):
+            try:
+                sb("DELETE", path, prefer="return=minimal"); return True
+            except Exception:
+                time.sleep(2 * (i + 1))
+        return False
+
+    def del_date(d):
+        if sb_del(f"slots?slot_date=eq.{d}"):
+            return
+        # 한 날짜가 너무 크면 시간대로 쪼개서
+        bks = ["00:00", "11:00", "13:00", "15:00", "17:00", "19:00", "23:59"]
+        for a, b in zip(bks, bks[1:]):
+            sb_del(f"slots?slot_date=eq.{d}&start_time=gte.{a}:00&start_time=lt.{b}:00")
+
+    sb_del(f"slots?slot_date=lt.{start_ymd}")  # 과거 정리 (1일치, 작음)
+    for off in range(DAYS):                     # 수집창 날짜별로 비우기
+        del_date((today + timedelta(days=off)).strftime("%Y-%m-%d"))
     inserted = 0
     for i in range(0, len(rows), 500):
         sb("POST", "slots", body=rows[i:i+500], prefer="return=minimal,resolution=merge-duplicates")

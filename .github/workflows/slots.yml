@@ -2,7 +2,7 @@ name: slot-ingest
 
 on:
   schedule:
-    - cron: "0 * * * *" # 매 정각 (UTC) — 슬롯 갱신 + Supabase keep-alive
+    - cron: "0 */2 * * *" # 2시간마다 (UTC) — 전국 4만곳이라 부하·차단 완화
   workflow_dispatch: {} # 수동 실행 버튼
 
 concurrency:
@@ -12,7 +12,7 @@ concurrency:
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
