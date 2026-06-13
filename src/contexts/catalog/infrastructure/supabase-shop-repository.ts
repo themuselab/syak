@@ -101,15 +101,23 @@ export class SupabaseShopRepository implements ShopRepository {
 
   async byId(id: string): Promise<ShopDetail | null> {
     if (this.detailCache.has(id)) return this.detailCache.get(id)!;
-    const res = await sbFetch(`shops?id=eq.${encodeURIComponent(id)}&select=detail,services,item_ids,slot_summary,event_desc,event_price`);
+    const res = await sbFetch(`shops?id=eq.${encodeURIComponent(id)}&select=detail,services,item_ids,slot_summary,event_desc,event_price,biz_id,biz_type`);
     let detail: ShopDetail | null = null;
     if (res.ok || res.status === 206) {
       const rows = await res.json();
       const row = rows[0];
       if (row?.detail) {
+        // 네이버 예약(biz_id) 있는데 detail.reservationRoutes에 naver가 없으면 보강
+        // (슬롯은 biz_id 백필로 들어오는데 옛 detail엔 예약URL이 없어 인스타로 빠지는 버그)
+        let routes = (row.detail.reservationRoutes ?? []) as ShopDetail["reservationRoutes"];
+        if (row.biz_id && !routes.some((r) => r.type === "naver")) {
+          const url = `https://m.booking.naver.com/booking/${row.biz_type ?? 13}/bizes/${row.biz_id}`;
+          routes = [{ type: "naver", label: "네이버 예약", value: url }, ...routes];
+        }
         // detail jsonb엔 services/staffCount/slotSummary/event가 없음 → 컬럼에서 합쳐줌
         detail = {
           ...(row.detail as ShopDetail),
+          reservationRoutes: routes,
           services: row.services ?? row.detail.services ?? [],
           staffCount: Array.isArray(row.item_ids) ? row.item_ids.length : 0,
           slotSummary: Array.isArray(row.slot_summary) ? row.slot_summary : [],
