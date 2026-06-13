@@ -161,7 +161,7 @@ export function MapView({ shops, highlightedId, center, myPos, onPinClick, onBou
       kakao.maps.event.addListener(marker, "click", () => onClickRef.current(s));
       marker.setMap(map);
       const el = document.createElement("div");
-      el.textContent = `⭐ ${s.name}`;
+      el.textContent = s.name;
       el.style.cssText =
         "background:#fff;border:1.5px solid #f59e0b;color:#b45309;font-size:11px;font-weight:800;" +
         "padding:3px 8px;border-radius:11px;box-shadow:0 2px 7px rgba(0,0,0,.22);white-space:nowrap;cursor:pointer;";

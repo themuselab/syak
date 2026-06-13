@@ -30,7 +30,7 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 BOOKING_RE = re.compile(r"bizes/(\d+)/items/(\d+)")
 # 대표가 노이즈 제외 (recompute_price 와 동일 규칙)
-NOISE = re.compile(r"제거|오프|off|리무브|리페어|음료|추가|옵션|보강|보수|파라핀|영양제|연장보수|드릴|디자인추가|보호|글루|케어추가")
+NOISE = re.compile(r"제거|오프|off|리무브|리페어|음료|추가|옵션|보강|보수|파라핀|영양제|연장보수|드릴|디자인추가|보호|글루|케어추가|기장|길이|증모|붙임|별도")
 
 
 def rep_price(menus):
