@@ -62,7 +62,8 @@ export function MapView({ shops, highlightedId, center, myPos, onPinClick, onBou
   });
   const [map, setMap] = useState<KakaoAny>(null);
   const clustererRef = useRef<KakaoAny>(null);
-  const markersById = useRef<Record<string, KakaoAny>>({});
+  const markersById = useRef<Record<string, KakaoAny>>({}); // 일반 마커(클러스터)
+  const partnerById = useRef<Record<string, { marker: KakaoAny; overlay: KakaoAny }>>({}); // 파트너(직접)
   const imagesRef = useRef<Record<string, KakaoAny>>({});
   // 최신 콜백을 리스너에서 참조 (재바인딩 없이)
   const onClickRef = useRef(onPinClick);
@@ -85,138 +86,117 @@ export function MapView({ shops, highlightedId, center, myPos, onPinClick, onBou
     return () => kakao.maps.event.removeListener(map, "idle", emit);
   }, [map]);
 
-  // 네이티브 클러스터러 — 마커 전체를 React 밖에서 관리 + 프레임 단위 점진 추가(블로킹 방지)
+  // 클러스터러 + 공유 이미지: 지도당 1회만 생성, 언마운트 시 정리 (매 pan 재생성 X)
   useEffect(() => {
     const kakao = (window as KakaoAny).kakao;
     if (!map || !kakao?.maps?.MarkerClusterer) return;
 
-    // 카테고리별 공유 이미지 (8개만 생성, 마커들이 재사용)
     if (!Object.keys(imagesRef.current).length) {
       for (const [cat, color] of Object.entries(CATEGORY_COLORS)) {
-        imagesRef.current[cat] = new kakao.maps.MarkerImage(
-          pinDataUrl(color),
-          new kakao.maps.Size(14, 14),
-        );
+        imagesRef.current[cat] = new kakao.maps.MarkerImage(pinDataUrl(color), new kakao.maps.Size(14, 14));
       }
     }
-    if (!imagesRef.current["__event__"]) {
-      imagesRef.current["__event__"] = new kakao.maps.MarkerImage(
-        eventPinDataUrl(),
-        new kakao.maps.Size(24, 31),
-      );
-    }
-    if (!imagesRef.current["__partner__"]) {
-      imagesRef.current["__partner__"] = new kakao.maps.MarkerImage(
-        partnerPinDataUrl(),
-        new kakao.maps.Size(30, 40),
-      );
-    }
-    const images = imagesRef.current;
-    const fallback = images["네일"];
-    const eventImage = images["__event__"];
-    const partnerImage = images["__partner__"];
+    if (!imagesRef.current["__event__"]) imagesRef.current["__event__"] = new kakao.maps.MarkerImage(eventPinDataUrl(), new kakao.maps.Size(24, 31));
+    if (!imagesRef.current["__partner__"]) imagesRef.current["__partner__"] = new kakao.maps.MarkerImage(partnerPinDataUrl(), new kakao.maps.Size(30, 40));
 
     const clusterStyle = (size: number, bg: string) => ({
-      width: `${size}px`,
-      height: `${size}px`,
-      background: bg,
-      borderRadius: `${size / 2}px`,
-      color: "#fff",
-      textAlign: "center" as const,
-      lineHeight: `${size}px`,
-      fontSize: "13px",
-      fontWeight: "700",
-      border: "2px solid #fff",
-      boxShadow: "0 2px 8px rgba(157,23,107,.35)",
+      width: `${size}px`, height: `${size}px`, background: bg, borderRadius: `${size / 2}px`,
+      color: "#fff", textAlign: "center" as const, lineHeight: `${size}px`, fontSize: "13px",
+      fontWeight: "700", border: "2px solid #fff", boxShadow: "0 2px 8px rgba(157,23,107,.35)",
     });
-
     const clusterer = new kakao.maps.MarkerClusterer({
-      map,
-      averageCenter: true,
-      minLevel: 6, // 이상(줌아웃)=클러스터, 미만(줌인)=개별 핀
-      gridSize: 80, // 클러스터 묶는 범위 ↑ → 클러스터 수 ↓ → 가벼움
-      minClusterSize: 2,
-      disableClickZoom: false,
-      // 브랜드 핑크 농담 (개수 많을수록 진하게)
+      map, averageCenter: true, minLevel: 6, gridSize: 80, minClusterSize: 2, disableClickZoom: false,
       calculator: [10, 100, 500],
       styles: [
-        clusterStyle(38, "rgba(244,114,182,0.92)"),
-        clusterStyle(46, "rgba(236,72,153,0.93)"),
-        clusterStyle(56, "rgba(219,39,119,0.95)"),
-        clusterStyle(66, "rgba(157,23,107,0.95)"),
+        clusterStyle(38, "rgba(244,114,182,0.92)"), clusterStyle(46, "rgba(236,72,153,0.93)"),
+        clusterStyle(56, "rgba(219,39,119,0.95)"), clusterStyle(66, "rgba(157,23,107,0.95)"),
       ],
     });
     clustererRef.current = clusterer;
 
-    const all = shops.filter((s) => s.coord?.lat && s.coord?.lng);
-    const list = all.filter((s) => !s.isPartner); // 일반 → 클러스터
-    const partners = all.filter((s) => s.isPartner); // 파트너 → 클러스터 밖(항상 보임)
-    const byId: Record<string, KakaoAny> = {};
-    markersById.current = byId;
+    return () => {
+      clusterer.clear();
+      clusterer.setMap(null);
+      clustererRef.current = null;
+      Object.values(partnerById.current).forEach((p) => { p.marker.setMap(null); p.overlay.setMap(null); });
+      partnerById.current = {};
+      markersById.current = {};
+    };
+  }, [map]);
 
-    // 파트너 핀: 클러스터에 안 넣고 지도에 직접 → 줌아웃해도 묻히지 않음, 최상단
-    // + 이름 라벨(CustomOverlay) 항상 표시 → 네이버 광고핀처럼 특별하게
-    const partnerOverlays: KakaoAny[] = [];
-    const partnerMarkers = partners.map((s) => {
-      const marker = new kakao.maps.Marker({
-        position: new kakao.maps.LatLng(s.coord.lat, s.coord.lng),
-        image: partnerImage,
-        title: s.name,
-        zIndex: 9,
-      });
+  // 마커 diff — shops 바뀌면 사라진 것만 제거 + 새것만 추가 (전체 재생성 X → pan 렉 해결)
+  useEffect(() => {
+    const kakao = (window as KakaoAny).kakao;
+    const clusterer = clustererRef.current;
+    if (!map || !clusterer || !kakao?.maps) return;
+    const images = imagesRef.current;
+    const fallback = images["네일"];
+    const eventImage = images["__event__"];
+    const partnerImage = images["__partner__"];
+    const byId = markersById.current;
+    const pById = partnerById.current;
+
+    const all = shops.filter((s) => s.coord?.lat && s.coord?.lng);
+    const regIds = new Set<string>();
+    const parIds = new Set<string>();
+    for (const s of all) (s.isPartner ? parIds : regIds).add(s.id);
+
+    // 사라진 일반 마커 제거
+    const removeReg: KakaoAny[] = [];
+    for (const id of Object.keys(byId)) {
+      if (!regIds.has(id)) { removeReg.push(byId[id]); delete byId[id]; }
+    }
+    if (removeReg.length) clusterer.removeMarkers(removeReg);
+
+    // 사라진 파트너 제거
+    for (const id of Object.keys(pById)) {
+      if (!parIds.has(id)) { pById[id].marker.setMap(null); pById[id].overlay.setMap(null); delete pById[id]; }
+    }
+
+    // 새 파트너 추가 (직접 표시 + 이름 라벨)
+    for (const s of all) {
+      if (!s.isPartner || pById[s.id]) continue;
+      const pos = new kakao.maps.LatLng(s.coord.lat, s.coord.lng);
+      const marker = new kakao.maps.Marker({ position: pos, image: partnerImage, title: s.name, zIndex: 9 });
       kakao.maps.event.addListener(marker, "click", () => onClickRef.current(s));
       marker.setMap(map);
-      byId[s.id] = marker;
-
       const el = document.createElement("div");
       el.textContent = `⭐ ${s.name}`;
       el.style.cssText =
         "background:#fff;border:1.5px solid #f59e0b;color:#b45309;font-size:11px;font-weight:800;" +
         "padding:3px 8px;border-radius:11px;box-shadow:0 2px 7px rgba(0,0,0,.22);white-space:nowrap;cursor:pointer;";
       el.onclick = () => onClickRef.current(s);
-      const ov = new kakao.maps.CustomOverlay({
-        position: new kakao.maps.LatLng(s.coord.lat, s.coord.lng),
-        content: el,
-        yAnchor: 2.5, // 핀 위로
-        zIndex: 11,
-      });
-      ov.setMap(map);
-      partnerOverlays.push(ov);
-      return marker;
-    });
+      const overlay = new kakao.maps.CustomOverlay({ position: pos, content: el, yAnchor: 2.5, zIndex: 11 });
+      overlay.setMap(map);
+      pById[s.id] = { marker, overlay };
+    }
 
-    // 한 번에 수천개 생성 시 메인스레드 정지 → 1,500개씩 프레임에 나눠 추가
+    // 새 일반 마커만 배치 추가 (1,500개씩 프레임 분할)
+    const toAdd = all.filter((s) => !s.isPartner && !byId[s.id]);
     let cancelled = false;
     let i = 0;
     const BATCH = 1500;
     function step() {
       if (cancelled) return;
-      const slice = list.slice(i, i + BATCH);
+      const slice = toAdd.slice(i, i + BATCH);
       const markers = slice.map((s) => {
         const marker = new kakao.maps.Marker({
           position: new kakao.maps.LatLng(s.coord.lat, s.coord.lng),
           image: s.hasEvent ? eventImage : images[s.category] || fallback,
           title: s.name,
         });
-        if (s.hasEvent) marker.setZIndex(6); // 할인핀을 일반 핀 위로
+        if (s.hasEvent) marker.setZIndex(6);
         kakao.maps.event.addListener(marker, "click", () => onClickRef.current(s));
         byId[s.id] = marker;
         return marker;
       });
-      clusterer.addMarkers(markers);
+      if (markers.length) clusterer.addMarkers(markers);
       i += BATCH;
-      if (i < list.length) requestAnimationFrame(step);
+      if (i < toAdd.length) requestAnimationFrame(step);
     }
-    requestAnimationFrame(step);
+    if (toAdd.length) requestAnimationFrame(step);
 
-    return () => {
-      cancelled = true;
-      clusterer.clear();
-      clusterer.setMap(null);
-      partnerMarkers.forEach((m) => m.setMap(null));
-      partnerOverlays.forEach((o) => o.setMap(null));
-      markersById.current = {};
-    };
+    return () => { cancelled = true; };
   }, [map, shops]);
 
   // 선택 핀 강조 (imperatively 이미지 교체)
@@ -224,23 +204,23 @@ export function MapView({ shops, highlightedId, center, myPos, onPinClick, onBou
   useEffect(() => {
     const kakao = (window as KakaoAny).kakao;
     if (!kakao?.maps) return;
-    const byId = markersById.current;
-    if (prevHl.current && byId[prevHl.current]) {
+    const mk = (id: string) => markersById.current[id] || partnerById.current[id]?.marker;
+    if (prevHl.current && mk(prevHl.current)) {
       const prev = shops.find((x) => x.id === prevHl.current);
-      byId[prevHl.current].setImage(
+      mk(prevHl.current).setImage(
         (prev?.isPartner && imagesRef.current["__partner__"]) ||
           (prev?.hasEvent && imagesRef.current["__event__"]) ||
           (prev && imagesRef.current[prev.category]) ||
           imagesRef.current["네일"],
       );
     }
-    if (highlightedId && byId[highlightedId]) {
+    if (highlightedId && mk(highlightedId)) {
       const s = shops.find((x) => x.id === highlightedId);
       const color = (s && CATEGORY_COLORS[s.category]) || "#ec4899";
-      byId[highlightedId].setImage(
+      mk(highlightedId).setImage(
         new kakao.maps.MarkerImage(pinDataUrl(color, true), new kakao.maps.Size(26, 26)),
       );
-      byId[highlightedId].setZIndex(10);
+      mk(highlightedId).setZIndex(10);
     }
     prevHl.current = highlightedId;
   }, [highlightedId, shops]);

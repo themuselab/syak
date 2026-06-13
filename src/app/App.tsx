@@ -128,9 +128,13 @@ export default function App() {
   }, [q, searchByName]);
 
   // 지도 영역(bounds) 변하면 그 영역 샵 로드 — 검색 중일 땐 스킵(egress 절약)
+  // 디바운스 350ms: 빠른 pan/zoom에 매번 로드하지 않고 멈춘 뒤 1회만
+  const boundsTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const onBoundsChanged = useCallback(
     (b: Parameters<typeof loadBounds>[0]) => {
-      if (!qRef.current) loadBounds(b);
+      if (qRef.current) return;
+      if (boundsTimer.current) clearTimeout(boundsTimer.current);
+      boundsTimer.current = setTimeout(() => loadBounds(b), 350);
     },
     [loadBounds],
   );

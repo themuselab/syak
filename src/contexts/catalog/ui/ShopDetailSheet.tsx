@@ -4,6 +4,19 @@ import { thumbW, FALLBACK_IMAGE, onImgError } from "../../../shared/ui/image";
 import { usecases } from "../../../app/composition-root";
 import type { ReservationRoute } from "../domain/shop";
 
+// 대표(최저) 실서비스가 — add-on/잡메뉴(추가·기장·옵션 등) 제외하고 가장 싼 메뉴
+const PRICE_NOISE = /제거|오프|off|리무브|리페어|음료|추가|옵션|보강|보수|파라핀|영양제|드릴|보호|글루|기장|길이|증모|붙임|별도/;
+function repMenu(menus: { name: string; price: number | null }[]): { name: string; price: number } | null {
+  let best: { name: string; price: number } | null = null;
+  for (const m of menus) {
+    const p = m.price;
+    if (!p || p < 5000 || p > 2000000) continue;
+    if (PRICE_NOISE.test(m.name || "")) continue;
+    if (!best || p < best.price) best = { name: m.name, price: p };
+  }
+  return best;
+}
+
 function ymd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
@@ -140,25 +153,38 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
                 onPick={(t) => onReserveClick(detail.id, { type: "naver", label: "네이버로 예약", value: "" }, { slot: { date: tomorrowYmd(), time: t }, district: detail.gu, category: detail.category })} />
             )}
 
-            {/* 메뉴 · 가격 — 예약 시간 바로 다음에 가격을 보여줘 이탈 방지 */}
-            {detail.menus.length > 0 && (
-              <Section title="메뉴 · 가격">
-                {detail.menus.slice(0, 14).map((m, i) => (
-                  <div
-                    key={i}
-                    style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}
-                  >
-                    <span>
-                      {m.recommend && <span style={{ color: "#ec4899", fontWeight: 700, marginRight: 4 }}>추천</span>}
-                      {m.name}
-                    </span>
-                    <span style={{ fontWeight: 600 }}>
-                      {m.price ? `${m.price.toLocaleString()}원` : "—"}
-                    </span>
-                  </div>
-                ))}
-              </Section>
-            )}
+            {/* 메뉴 · 가격 — 예약 시간 다음. 최저가가 무슨 메뉴인지 강조(필터 오해 방지) */}
+            {detail.menus.length > 0 && (() => {
+              const rep = repMenu(detail.menus);
+              return (
+                <Section title="메뉴 · 가격">
+                  {rep && (
+                    <div style={{ background: "#fdeef6", border: "1px solid #f8c6dd", borderRadius: 10, padding: "9px 12px", marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: 12.5, fontWeight: 700, color: "#9b2a5e" }}>최저 · {rep.name}</span>
+                      <span style={{ fontSize: 16, fontWeight: 800, color: "#ec4899" }}>{rep.price.toLocaleString()}원~</span>
+                    </div>
+                  )}
+                  {detail.menus.slice(0, 14).map((m, i) => {
+                    const isRep = !!rep && m.name === rep.name && m.price === rep.price;
+                    return (
+                      <div
+                        key={i}
+                        style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}
+                      >
+                        <span>
+                          {isRep && <span style={{ color: "#ec4899", fontWeight: 800, marginRight: 4 }}>최저가</span>}
+                          {m.recommend && <span style={{ color: "#ec4899", fontWeight: 700, marginRight: 4 }}>추천</span>}
+                          {m.name}
+                        </span>
+                        <span style={{ fontWeight: isRep ? 800 : 600, color: isRep ? "#ec4899" : undefined }}>
+                          {m.price ? `${m.price.toLocaleString()}원` : "—"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </Section>
+              );
+            })()}
 
             {/* 기본 정보 */}
             <Section title="정보">
