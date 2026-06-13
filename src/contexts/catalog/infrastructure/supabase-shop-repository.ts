@@ -5,7 +5,7 @@ import type { ShopSummary, ShopDetail, ShopPin } from "../domain/shop";
 import { sbFetch } from "../../../shared/platform/supabase";
 
 const SUMMARY_COLS =
-  "id,name,category,categories,gu,lat,lng,representative_image,review_count,price_tier,min_price,first_visit_deal,has_event,reservable,services,event_desc,event_price";
+  "id,name,category,categories,gu,lat,lng,representative_image,review_count,price_tier,min_price,first_visit_deal,has_event,reservable,services,event_desc,event_price,is_partner";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function toSummary(r: any): ShopSummary {
@@ -24,6 +24,7 @@ function toSummary(r: any): ShopSummary {
     hasEvent: !!r.event_desc, // 실시간 수집한 할인 텍스트 유무로 파생
     eventDesc: r.event_desc ?? null,
     eventPrice: r.event_price ?? null,
+    isPartner: !!r.is_partner,
     reservable: r.reservable,
     services: r.services ?? [],
   };
@@ -63,7 +64,7 @@ export class SupabaseShopRepository implements ShopRepository {
   async pinsInBounds(b: Bounds, limit = 5000): Promise<ShopPin[]> {
     // 마커에 필요한 최소 컬럼만 → 1핀 ~70B (요약의 1/6)
     const q =
-      `shops?select=id,name,category,gu,lat,lng,event_desc,event_price` +
+      `shops?select=id,name,category,gu,lat,lng,event_desc,event_price,is_partner` +
       `&lat=gte.${b.swLat}&lat=lte.${b.neLat}&lng=gte.${b.swLng}&lng=lte.${b.neLng}` +
       `&order=review_count.desc&limit=${limit}`;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -75,6 +76,7 @@ export class SupabaseShopRepository implements ShopRepository {
       coord: { lat: r.lat, lng: r.lng },
       hasEvent: !!r.event_desc,
       eventPrice: r.event_price ?? null,
+      isPartner: !!r.is_partner,
     }));
   }
 
@@ -101,7 +103,7 @@ export class SupabaseShopRepository implements ShopRepository {
 
   async byId(id: string): Promise<ShopDetail | null> {
     if (this.detailCache.has(id)) return this.detailCache.get(id)!;
-    const res = await sbFetch(`shops?id=eq.${encodeURIComponent(id)}&select=detail,services,item_ids,slot_summary,event_desc,event_price,biz_id,biz_type`);
+    const res = await sbFetch(`shops?id=eq.${encodeURIComponent(id)}&select=detail,services,item_ids,slot_summary,event_desc,event_price,biz_id,biz_type,is_partner`);
     let detail: ShopDetail | null = null;
     if (res.ok || res.status === 206) {
       const rows = await res.json();
@@ -124,6 +126,7 @@ export class SupabaseShopRepository implements ShopRepository {
           hasEvent: !!row.event_desc,
           eventDesc: row.event_desc ?? null,
           eventPrice: row.event_price ?? null,
+          isPartner: !!row.is_partner,
         };
       }
     }

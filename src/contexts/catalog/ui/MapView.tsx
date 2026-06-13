@@ -30,6 +30,16 @@ function eventPinDataUrl(): string {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
+// 샥 파트너(파일럿) — 골드 별 핀(가장 크고 눈에 띔, 클러스터에서 제외돼 항상 보임)
+function partnerPinDataUrl(): string {
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="30" height="40" viewBox="0 0 30 40">` +
+    `<path d="M15 0C7 0 0 6.6 0 15c0 10.5 15 25 15 25s15-14.5 15-25C30 6.6 23 0 15 0z" fill="#f59e0b" stroke="#fff" stroke-width="2.5"/>` +
+    `<path d="M15 6l2.6 5.3 5.9.9-4.2 4.1 1 5.8L15 23.4 9.7 26.1l1-5.8-4.2-4.1 5.9-.9z" fill="#fff"/>` +
+    `</svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
 const MY_DOT =
   "data:image/svg+xml;utf8," +
   encodeURIComponent(
@@ -95,9 +105,16 @@ export function MapView({ shops, highlightedId, center, myPos, onPinClick, onBou
         new kakao.maps.Size(24, 31),
       );
     }
+    if (!imagesRef.current["__partner__"]) {
+      imagesRef.current["__partner__"] = new kakao.maps.MarkerImage(
+        partnerPinDataUrl(),
+        new kakao.maps.Size(30, 40),
+      );
+    }
     const images = imagesRef.current;
     const fallback = images["네일"];
     const eventImage = images["__event__"];
+    const partnerImage = images["__partner__"];
 
     const clusterStyle = (size: number, bg: string) => ({
       width: `${size}px`,
@@ -131,11 +148,27 @@ export function MapView({ shops, highlightedId, center, myPos, onPinClick, onBou
     });
     clustererRef.current = clusterer;
 
-    const list = shops.filter((s) => s.coord?.lat && s.coord?.lng);
+    const all = shops.filter((s) => s.coord?.lat && s.coord?.lng);
+    const list = all.filter((s) => !s.isPartner); // 일반 → 클러스터
+    const partners = all.filter((s) => s.isPartner); // 파트너 → 클러스터 밖(항상 보임)
     const byId: Record<string, KakaoAny> = {};
     markersById.current = byId;
 
-    // 한 번에 7,635개 생성 시 메인스레드 정지 → 1,500개씩 프레임에 나눠 추가
+    // 파트너 핀: 클러스터에 안 넣고 지도에 직접 → 줌아웃해도 묻히지 않음, 최상단
+    const partnerMarkers = partners.map((s) => {
+      const marker = new kakao.maps.Marker({
+        position: new kakao.maps.LatLng(s.coord.lat, s.coord.lng),
+        image: partnerImage,
+        title: s.name,
+        zIndex: 9,
+      });
+      kakao.maps.event.addListener(marker, "click", () => onClickRef.current(s));
+      marker.setMap(map);
+      byId[s.id] = marker;
+      return marker;
+    });
+
+    // 한 번에 수천개 생성 시 메인스레드 정지 → 1,500개씩 프레임에 나눠 추가
     let cancelled = false;
     let i = 0;
     const BATCH = 1500;
@@ -163,6 +196,7 @@ export function MapView({ shops, highlightedId, center, myPos, onPinClick, onBou
       cancelled = true;
       clusterer.clear();
       clusterer.setMap(null);
+      partnerMarkers.forEach((m) => m.setMap(null));
       markersById.current = {};
     };
   }, [map, shops]);
@@ -176,7 +210,8 @@ export function MapView({ shops, highlightedId, center, myPos, onPinClick, onBou
     if (prevHl.current && byId[prevHl.current]) {
       const prev = shops.find((x) => x.id === prevHl.current);
       byId[prevHl.current].setImage(
-        (prev?.hasEvent && imagesRef.current["__event__"]) ||
+        (prev?.isPartner && imagesRef.current["__partner__"]) ||
+          (prev?.hasEvent && imagesRef.current["__event__"]) ||
           (prev && imagesRef.current[prev.category]) ||
           imagesRef.current["네일"],
       );

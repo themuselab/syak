@@ -36,6 +36,7 @@ export function ShopCard({ shop, onClick }: Props) {
           {shop.name}
         </div>
         <div style={{ display: "flex", gap: 6, marginTop: 7, flexWrap: "wrap" }}>
+          {shop.isPartner && <Badge tone="partner">⭐ 샥 파트너</Badge>}
           {shop.hasEvent && <Badge tone="event">🏷️ {shop.eventPrice ?? "할인"}</Badge>}
           <Badge tone="price">{shop.priceTier}</Badge>
           {shop.firstVisitDeal && <Badge tone="first">첫방문 특가</Badge>}
@@ -49,6 +50,7 @@ export function ShopCard({ shop, onClick }: Props) {
 }
 
 const TONES = {
+  partner: { bg: "#f59e0b", color: "#fff" },
   event: { bg: "#ec4899", color: "#fff" },
   price: { bg: "#f0f0f3", color: "#6b6b72" },
   first: { bg: "#fff1e3", color: "#e3820f" },

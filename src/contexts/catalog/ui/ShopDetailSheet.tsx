@@ -105,6 +105,7 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
           <div style={{ padding: "14px 16px 100px" }}>
             <h2 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>{detail.name}</h2>
             <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+              {detail.isPartner && <DBadge tone="partner">⭐ 샥 파트너</DBadge>}
               {detail.hasEvent && <DBadge tone="event">🏷️ {detail.eventPrice ?? "할인"}</DBadge>}
               <DBadge tone="price">{detail.priceTier}</DBadge>
               {detail.firstVisitDeal && <DBadge tone="first">첫방문 특가</DBadge>}
@@ -291,6 +292,7 @@ function Gallery({ images }: { images: string[] }) {
 }
 
 const DTONES = {
+  partner: { bg: "#f59e0b", color: "#fff" },
   event: { bg: "#ec4899", color: "#fff" },
   price: { bg: "#f0f0f3", color: "#6b6b72" },
   first: { bg: "#fff1e3", color: "#e3820f" },

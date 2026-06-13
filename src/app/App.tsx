@@ -142,6 +142,10 @@ export default function App() {
     if (myPos && chip !== "reviews") {
       list = [...list].sort((a, b) => distanceMeters(myPos, a.coord) - distanceMeters(myPos, b.coord));
     }
+    // 파트너(파일럿)는 현재 보이는 목록(=그 지역) 맨 위로 — 거리/정렬 무관하게 상단 고정
+    if (list.some((s) => s.isPartner)) {
+      list = [...list].sort((a, b) => (b.isPartner ? 1 : 0) - (a.isPartner ? 1 : 0));
+    }
     return list;
   }, [q, nameResults, shops, chip, openShopIds, myPos]);
 

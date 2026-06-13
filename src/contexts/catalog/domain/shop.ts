@@ -28,6 +28,7 @@ export interface ShopPin {
   coord: Coordinate;
   hasEvent: boolean; // 할인/이벤트 중 → 지도 특별핀
   eventPrice: string | null; // 핀 배지 라벨 ("50% 할인", "29,000원~")
+  isPartner: boolean; // 샥 파트너(파일럿) → 지도 골드핀 + 클러스터 제외 + 리스트 상단
 }
 
 /** 리스트/지도 카드에 쓰는 요약 */
@@ -47,6 +48,7 @@ export interface ShopSummary {
   hasEvent: boolean; // 쿠폰/이벤트 보유 (event_desc 유무로 파생)
   eventDesc: string | null; // 할인/이벤트 원문 텍스트
   eventPrice: string | null; // 추출 라벨 ("50% 할인", "29,000원~")
+  isPartner: boolean; // 샥 파트너(파일럿) → 리스트 상단 + 배지
   reservable: boolean;
   services: string[]; // 시술 태그(젤네일/패디/속눈썹…) — 예약 item에서 추출
 }
