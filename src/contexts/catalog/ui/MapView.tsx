@@ -20,6 +20,16 @@ function pinDataUrl(color: string, highlighted = false): string {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
+// 할인/이벤트 가게 — 핑크 물방울 핀(일반 동그라미 핀과 확연히 구분, 네이버 광고핀처럼)
+function eventPinDataUrl(): string {
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="31" viewBox="0 0 24 31">` +
+    `<path d="M12 0C5.4 0 0 5.4 0 12c0 8.4 12 19 12 19s12-10.6 12-19C24 5.4 18.6 0 12 0z" fill="#ec4899" stroke="#fff" stroke-width="2"/>` +
+    `<text x="12" y="16" font-size="11" font-weight="bold" fill="#fff" text-anchor="middle" font-family="sans-serif">%</text>` +
+    `</svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
 const MY_DOT =
   "data:image/svg+xml;utf8," +
   encodeURIComponent(
@@ -79,8 +89,15 @@ export function MapView({ shops, highlightedId, center, myPos, onPinClick, onBou
         );
       }
     }
+    if (!imagesRef.current["__event__"]) {
+      imagesRef.current["__event__"] = new kakao.maps.MarkerImage(
+        eventPinDataUrl(),
+        new kakao.maps.Size(24, 31),
+      );
+    }
     const images = imagesRef.current;
     const fallback = images["네일"];
+    const eventImage = images["__event__"];
 
     const clusterStyle = (size: number, bg: string) => ({
       width: `${size}px`,
@@ -128,9 +145,10 @@ export function MapView({ shops, highlightedId, center, myPos, onPinClick, onBou
       const markers = slice.map((s) => {
         const marker = new kakao.maps.Marker({
           position: new kakao.maps.LatLng(s.coord.lat, s.coord.lng),
-          image: images[s.category] || fallback,
+          image: s.hasEvent ? eventImage : images[s.category] || fallback,
           title: s.name,
         });
+        if (s.hasEvent) marker.setZIndex(6); // 할인핀을 일반 핀 위로
         kakao.maps.event.addListener(marker, "click", () => onClickRef.current(s));
         byId[s.id] = marker;
         return marker;
@@ -158,7 +176,9 @@ export function MapView({ shops, highlightedId, center, myPos, onPinClick, onBou
     if (prevHl.current && byId[prevHl.current]) {
       const prev = shops.find((x) => x.id === prevHl.current);
       byId[prevHl.current].setImage(
-        (prev && imagesRef.current[prev.category]) || imagesRef.current["네일"],
+        (prev?.hasEvent && imagesRef.current["__event__"]) ||
+          (prev && imagesRef.current[prev.category]) ||
+          imagesRef.current["네일"],
       );
     }
     if (highlightedId && byId[highlightedId]) {

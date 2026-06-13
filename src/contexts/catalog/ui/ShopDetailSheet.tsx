@@ -100,7 +100,7 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
           <div style={{ padding: "14px 16px 100px" }}>
             <h2 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>{detail.name}</h2>
             <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
-              {detail.hasEvent && <DBadge tone="event">이벤트</DBadge>}
+              {detail.hasEvent && <DBadge tone="event">🏷️ {detail.eventPrice ?? "할인"}</DBadge>}
               <DBadge tone="price">{detail.priceTier}</DBadge>
               {detail.firstVisitDeal && <DBadge tone="first">첫방문 특가</DBadge>}
             </div>
@@ -117,11 +117,41 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
               ⭐ 리뷰 {detail.reviewTotal.toLocaleString()} · 블로그 {detail.blogReviewTotal.toLocaleString()}
             </div>
 
+            {/* 할인/이벤트 박스 */}
+            {detail.hasEvent && detail.eventDesc && (
+              <div style={{ background: "linear-gradient(135deg,#fff0f7,#ffe4f0)", border: "1.5px solid #f8c6dd", borderRadius: 13, padding: "12px 13px", marginTop: 12 }}>
+                <span style={{ display: "inline-block", background: "#ec4899", color: "#fff", fontSize: 11, fontWeight: 800, padding: "3px 9px", borderRadius: 8, marginBottom: 7 }}>
+                  🏷️ {detail.eventPrice ?? "할인"}
+                </span>
+                <div style={{ fontSize: 13, lineHeight: 1.5, color: "#9b2a5e", fontWeight: 600, whiteSpace: "pre-line" }}>{detail.eventDesc}</div>
+              </div>
+            )}
+
             {/* 내일 빈 시간 */}
             {slots && slots.length > 0 && (
               <SlotsCard slots={slots} staffCount={detail.staffCount} slotSummary={detail.slotSummary}
                 naverUrl={detail.reservationRoutes.find((r) => r.type === "naver")?.value}
                 onPick={(t) => onReserveClick(detail.id, { type: "naver", label: "네이버로 예약", value: "" }, { slot: { date: tomorrowYmd(), time: t }, district: detail.gu, category: detail.category })} />
+            )}
+
+            {/* 메뉴 · 가격 — 예약 시간 바로 다음에 가격을 보여줘 이탈 방지 */}
+            {detail.menus.length > 0 && (
+              <Section title="메뉴 · 가격">
+                {detail.menus.slice(0, 14).map((m, i) => (
+                  <div
+                    key={i}
+                    style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}
+                  >
+                    <span>
+                      {m.recommend && <span style={{ color: "#ec4899", fontWeight: 700, marginRight: 4 }}>추천</span>}
+                      {m.name}
+                    </span>
+                    <span style={{ fontWeight: 600 }}>
+                      {m.price ? `${m.price.toLocaleString()}원` : "—"}
+                    </span>
+                  </div>
+                ))}
+              </Section>
             )}
 
             {/* 기본 정보 */}
@@ -152,26 +182,6 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
                 <Info label="편의" value={detail.conveniences.join(" · ")} />
               )}
             </Section>
-
-            {/* 메뉴 */}
-            {detail.menus.length > 0 && (
-              <Section title="메뉴 · 가격">
-                {detail.menus.slice(0, 12).map((m, i) => (
-                  <div
-                    key={i}
-                    style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}
-                  >
-                    <span>
-                      {m.recommend && <span style={{ color: "#ec4899", fontWeight: 700, marginRight: 4 }}>추천</span>}
-                      {m.name}
-                    </span>
-                    <span style={{ fontWeight: 600 }}>
-                      {m.price ? `${m.price.toLocaleString()}원` : "—"}
-                    </span>
-                  </div>
-                ))}
-              </Section>
-            )}
 
             {/* 리뷰 */}
             {detail.reviews.length > 0 && (
@@ -242,7 +252,7 @@ function Gallery({ images }: { images: string[] }) {
 }
 
 const DTONES = {
-  event: { bg: "#fdecf1", color: "#e6396a" },
+  event: { bg: "#ec4899", color: "#fff" },
   price: { bg: "#f0f0f3", color: "#6b6b72" },
   first: { bg: "#fff1e3", color: "#e3820f" },
 } as const;

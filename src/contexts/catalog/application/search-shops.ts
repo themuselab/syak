@@ -17,6 +17,11 @@ export function makeSearchByGu(repo: ShopRepository) {
   return (gu: string, limit?: number): Promise<ShopSummary[]> => repo.byGu(gu, limit);
 }
 
+/** 여러 지역 동시 선택(합집합) */
+export function makeSearchByGus(repo: ShopRepository) {
+  return (gus: string[], limit?: number): Promise<ShopSummary[]> => repo.byGus(gus, limit);
+}
+
 /** 이름 검색 (서버측) */
 export function makeSearchByName(repo: ShopRepository) {
   return (query: string): Promise<ShopSummary[]> => repo.searchByName(query);

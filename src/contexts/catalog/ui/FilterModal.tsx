@@ -53,6 +53,8 @@ export function FilterModal({ initial, onApply, onClose }: Props) {
           padding: 20,
           maxHeight: "80vh",
           overflowY: "auto",
+          overscrollBehavior: "contain",
+          WebkitOverflowScrolling: "touch",
         }}
       >
         <h2 style={{ fontSize: 17, fontWeight: 800, margin: "0 0 16px" }}>필터</h2>

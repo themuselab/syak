@@ -4,7 +4,7 @@ import type { ShopSummary, PriceTier } from "./shop";
 import type { Category } from "../../../shared/domain/category";
 
 export interface FilterCriteria {
-  gu?: string;
+  gus?: string[]; // 선택한 지역(구/시) — 여러 개 = 합집합(AND 다중선택)
   categories?: Category[];
   priceTiers?: PriceTier[];
   services?: string[]; // 시술(젤네일/패디…) — 하나라도 제공하면 통과
@@ -14,7 +14,7 @@ export interface FilterCriteria {
 }
 
 export function matchesFilter(shop: ShopSummary, c: FilterCriteria): boolean {
-  if (c.gu && shop.gu !== c.gu) return false;
+  if (c.gus?.length && !c.gus.includes(shop.gu)) return false;
   if (c.categories?.length && !c.categories.some((cat) => shop.categories.includes(cat))) return false;
   if (c.priceTiers?.length && !c.priceTiers.includes(shop.priceTier)) return false;
   if (c.services?.length && !c.services.some((sv) => shop.services?.includes(sv))) return false;

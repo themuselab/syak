@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { SheetRef } from "react-modal-sheet";
 import { useCatalog } from "../contexts/catalog/ui/hooks/useCatalog";
 import { MapView } from "../contexts/catalog/ui/MapView";
@@ -46,6 +46,20 @@ export default function App() {
   const [openShopIds, setOpenShopIds] = useState<Set<string> | null>(null); // 맞춤찾기 시간에 빈 샵
   const [chip, setChip] = useState<ChipKey | null>(null);
   const [query, setQuery] = useState("");
+  const headerRef = useRef<HTMLElement>(null);
+  const [headerH, setHeaderH] = useState(132); // 헤더 실측 높이 (시트 full 시 첫 카드 가림 방지)
+  const [atFull, setAtFull] = useState(false); // 시트가 최상단까지 펼쳐졌나
+
+  // 헤더 높이 실측 (ActiveFilters 유무로 높이 변함 → ResizeObserver)
+  useLayoutEffect(() => {
+    const el = headerRef.current;
+    if (!el) return;
+    const measure = () => setHeaderH(el.offsetHeight);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // 맞춤찾기(시간) → 그 시간 빈 샵 id 조회
   useEffect(() => {
@@ -131,10 +145,10 @@ export default function App() {
     return list;
   }, [q, nameResults, shops, chip, openShopIds, myPos]);
 
-  async function selectRegion(gu?: string) {
-    setFilter({ ...filter, gu });
-    if (gu) {
-      const list = await usecases.catalog.byGu(gu);
+  async function selectRegions(gus: string[]) {
+    setFilter({ ...filter, gus: gus.length ? gus : undefined });
+    if (gus.length) {
+      const list = await usecases.catalog.byGus(gus);
       const pts = list.filter((s) => s.coord?.lat && s.coord?.lng);
       if (pts.length) {
         const lat = pts.reduce((a, s) => a + s.coord.lat, 0) / pts.length;
@@ -168,12 +182,16 @@ export default function App() {
   const filtering = !!q || !!chip || !!openShopIds || activeFilterCount > 0;
   const mapShops: ShopPin[] = filtering ? displayed : pins;
 
-  const regionLabel = filter.gu ? filter.gu.replace(/구$/, "") : "지역";
+  const regionLabel = filter.gus?.length
+    ? filter.gus.length === 1
+      ? filter.gus[0].replace(/구$/, "")
+      : `${filter.gus[0].replace(/구$/, "")} 외 ${filter.gus.length - 1}`
+    : "지역";
 
   return (
     <div ref={setRoot} style={{ position: "fixed", inset: 0, fontFamily: "-apple-system, 'Apple SD Gothic Neo', sans-serif", background: "#fff" }}>
       {/* 헤더 */}
-      <header style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 25, padding: "14px 16px 10px", background: "#fff" }}>
+      <header ref={headerRef} style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 25, padding: "14px 16px 10px", background: "#fff" }}>
         <div style={{ position: "relative" }}>
           <input
             value={query}
@@ -238,7 +256,8 @@ export default function App() {
 
       {/* 바텀시트 */}
       {root && (
-        <SnapSheet ref={sheetRef} mountPoint={root}>
+        <SnapSheet ref={sheetRef} mountPoint={root} onSnap={(i) => setAtFull(i >= 3)}>
+          <div style={{ paddingTop: atFull ? headerH : 0, transition: "padding-top .18s ease" }}>
           {loading ? (
             <ShopListSkeleton />
           ) : (
@@ -255,6 +274,7 @@ export default function App() {
               <ShopListSheet shops={displayed} onShopClick={openDetail} />
             </>
           )}
+          </div>
         </SnapSheet>
       )}
 
@@ -273,7 +293,7 @@ export default function App() {
           onClose={() => setFilterOpen(false)}
         />
       )}
-      {regionOpen && <RegionPicker current={filter.gu} onSelect={selectRegion} onClose={() => setRegionOpen(false)} />}
+      {regionOpen && <RegionPicker selected={filter.gus ?? []} onApply={selectRegions} onClose={() => setRegionOpen(false)} />}
       {findOpen && <CustomFindModal onApply={setCustomFind} onClose={() => setFindOpen(false)} />}
       {leadOpen && <MissedAlertSheet onClose={() => setLeadOpen(false)} />}
     </div>

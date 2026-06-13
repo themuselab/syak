@@ -5,7 +5,7 @@ import type { ShopSummary, ShopDetail, ShopPin } from "../domain/shop";
 import { sbFetch } from "../../../shared/platform/supabase";
 
 const SUMMARY_COLS =
-  "id,name,category,categories,gu,lat,lng,representative_image,review_count,price_tier,min_price,first_visit_deal,has_event,reservable,services";
+  "id,name,category,categories,gu,lat,lng,representative_image,review_count,price_tier,min_price,first_visit_deal,has_event,reservable,services,event_desc,event_price";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function toSummary(r: any): ShopSummary {
@@ -21,7 +21,9 @@ function toSummary(r: any): ShopSummary {
     priceTier: r.price_tier,
     minPrice: r.min_price,
     firstVisitDeal: r.first_visit_deal,
-    hasEvent: r.has_event,
+    hasEvent: !!r.event_desc, // 실시간 수집한 할인 텍스트 유무로 파생
+    eventDesc: r.event_desc ?? null,
+    eventPrice: r.event_price ?? null,
     reservable: r.reservable,
     services: r.services ?? [],
   };
@@ -61,7 +63,7 @@ export class SupabaseShopRepository implements ShopRepository {
   async pinsInBounds(b: Bounds, limit = 5000): Promise<ShopPin[]> {
     // 마커에 필요한 최소 컬럼만 → 1핀 ~70B (요약의 1/6)
     const q =
-      `shops?select=id,name,category,gu,lat,lng` +
+      `shops?select=id,name,category,gu,lat,lng,event_desc,event_price` +
       `&lat=gte.${b.swLat}&lat=lte.${b.neLat}&lng=gte.${b.swLng}&lng=lte.${b.neLng}` +
       `&order=review_count.desc&limit=${limit}`;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -71,11 +73,21 @@ export class SupabaseShopRepository implements ShopRepository {
       category: r.category,
       gu: r.gu,
       coord: { lat: r.lat, lng: r.lng },
+      hasEvent: !!r.event_desc,
+      eventPrice: r.event_price ?? null,
     }));
   }
 
   async byGu(gu: string, limit = 600): Promise<ShopSummary[]> {
     const q = `shops?select=${SUMMARY_COLS}&gu=eq.${encodeURIComponent(gu)}&order=review_count.desc&limit=${limit}`;
+    return (await this.rows(q)).map(toSummary);
+  }
+
+  async byGus(gus: string[], limit = 600): Promise<ShopSummary[]> {
+    if (!gus.length) return [];
+    if (gus.length === 1) return this.byGu(gus[0], limit);
+    const inList = gus.map((g) => `"${encodeURIComponent(g)}"`).join(",");
+    const q = `shops?select=${SUMMARY_COLS}&gu=in.(${inList})&order=review_count.desc&limit=${limit}`;
     return (await this.rows(q)).map(toSummary);
   }
 
@@ -89,18 +101,21 @@ export class SupabaseShopRepository implements ShopRepository {
 
   async byId(id: string): Promise<ShopDetail | null> {
     if (this.detailCache.has(id)) return this.detailCache.get(id)!;
-    const res = await sbFetch(`shops?id=eq.${encodeURIComponent(id)}&select=detail,services,item_ids,slot_summary`);
+    const res = await sbFetch(`shops?id=eq.${encodeURIComponent(id)}&select=detail,services,item_ids,slot_summary,event_desc,event_price`);
     let detail: ShopDetail | null = null;
     if (res.ok || res.status === 206) {
       const rows = await res.json();
       const row = rows[0];
       if (row?.detail) {
-        // detail jsonb엔 services/staffCount/slotSummary가 없음 → 컬럼에서 합쳐줌
+        // detail jsonb엔 services/staffCount/slotSummary/event가 없음 → 컬럼에서 합쳐줌
         detail = {
           ...(row.detail as ShopDetail),
           services: row.services ?? row.detail.services ?? [],
           staffCount: Array.isArray(row.item_ids) ? row.item_ids.length : 0,
           slotSummary: Array.isArray(row.slot_summary) ? row.slot_summary : [],
+          hasEvent: !!row.event_desc,
+          eventDesc: row.event_desc ?? null,
+          eventPrice: row.event_price ?? null,
         };
       }
     }

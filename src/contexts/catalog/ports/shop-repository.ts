@@ -17,6 +17,8 @@ export interface ShopRepository {
   byIds(ids: string[]): Promise<ShopSummary[]>;
   /** 지역(구/시) 선택 시 그 지역 샵 (인기순 상한) */
   byGu(gu: string, limit?: number): Promise<ShopSummary[]>;
+  /** 여러 지역 동시 선택(합집합) */
+  byGus(gus: string[], limit?: number): Promise<ShopSummary[]>;
   /** 이름 검색 (서버측 ilike) */
   searchByName(query: string): Promise<ShopSummary[]>;
   /** 상세 1건 */

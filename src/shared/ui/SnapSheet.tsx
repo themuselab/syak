@@ -42,6 +42,9 @@ export const SnapSheet = forwardRef<SheetRef, Props>(function SnapSheet(
       detent="default"
       onSnap={onSnap}
       mountPoint={mountPoint}
+      // 항상 열린 시트라 전역 스크롤락이 늘 켜져 위에 뜨는 모달(필터·지역)의 스크롤을 막음 → 해제.
+      // 배경(App)은 position:fixed라 락이 애초에 불필요.
+      disableScrollLocking
       style={{ zIndex: 20, position: "absolute" }}
     >
       <Sheet.Container
