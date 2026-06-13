@@ -3,6 +3,16 @@
 import type { ShopSummary, PriceTier } from "./shop";
 import type { Category } from "../../../shared/domain/category";
 
+export type SortKey = "recommend" | "distance" | "reviews" | "priceLow" | "priceHigh";
+
+export const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: "recommend", label: "추천순" },
+  { key: "distance", label: "거리순" },
+  { key: "reviews", label: "리뷰 많은순" },
+  { key: "priceLow", label: "가격 낮은순" },
+  { key: "priceHigh", label: "가격 높은순" },
+];
+
 export interface FilterCriteria {
   gus?: string[]; // 선택한 지역(구/시) — 여러 개 = 합집합(AND 다중선택)
   categories?: Category[];
@@ -11,6 +21,7 @@ export interface FilterCriteria {
   reservableOnly?: boolean;
   hasEventOnly?: boolean;
   firstVisitOnly?: boolean;
+  sortBy?: SortKey; // 리스트 정렬 기준 (미지정 = recommend)
 }
 
 export function matchesFilter(shop: ShopSummary, c: FilterCriteria): boolean {

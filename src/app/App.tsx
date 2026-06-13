@@ -139,15 +139,23 @@ export default function App() {
     const base = q ? nameResults : shops;
     let list = applyChip(base, chip);
     if (openShopIds) list = list.filter((s) => openShopIds.has(s.id)); // 맞춤찾기: 그 시간 빈 샵만
-    if (myPos && chip !== "reviews") {
+    const sortBy = filter.sortBy ?? "recommend";
+    if (sortBy === "reviews") {
+      list = [...list].sort((a, b) => b.reviewCount - a.reviewCount);
+    } else if (sortBy === "priceLow") {
+      list = [...list].sort((a, b) => (a.minPrice ?? Infinity) - (b.minPrice ?? Infinity));
+    } else if (sortBy === "priceHigh") {
+      list = [...list].sort((a, b) => (b.minPrice ?? -1) - (a.minPrice ?? -1));
+    } else if (myPos && chip !== "reviews") {
+      // 추천순·거리순 — 위치 있으면 가까운 순
       list = [...list].sort((a, b) => distanceMeters(myPos, a.coord) - distanceMeters(myPos, b.coord));
     }
-    // 파트너(파일럿)는 현재 보이는 목록(=그 지역) 맨 위로 — 거리/정렬 무관하게 상단 고정
+    // 파트너(파일럿)는 현재 보이는 목록(=그 지역) 맨 위로 — 정렬 무관하게 상단 고정
     if (list.some((s) => s.isPartner)) {
       list = [...list].sort((a, b) => (b.isPartner ? 1 : 0) - (a.isPartner ? 1 : 0));
     }
     return list;
-  }, [q, nameResults, shops, chip, openShopIds, myPos]);
+  }, [q, nameResults, shops, chip, openShopIds, myPos, filter.sortBy]);
 
   async function selectRegions(gus: string[]) {
     setFilter({ ...filter, gus: gus.length ? gus : undefined });

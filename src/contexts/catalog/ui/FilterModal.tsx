@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { FilterCriteria } from "../domain/filters";
+import { SORT_OPTIONS } from "../domain/filters";
 import type { PriceTier } from "../domain/shop";
 import { CATEGORIES, SERVICE_FILTERS, type Category } from "../../../shared/domain/category";
 
@@ -59,6 +60,18 @@ export function FilterModal({ initial, onApply, onClose }: Props) {
       >
         <h2 style={{ fontSize: 17, fontWeight: 800, margin: "0 0 16px" }}>필터</h2>
 
+        <Group title="정렬">
+          {SORT_OPTIONS.map((o) => (
+            <Chip
+              key={o.key}
+              active={(draft.sortBy ?? "recommend") === o.key}
+              onClick={() => setDraft((d) => ({ ...d, sortBy: o.key }))}
+            >
+              {o.label}
+            </Chip>
+          ))}
+        </Group>
+
         <Group title="분야">
           {CATEGORIES.map((c) => (
             <Chip key={c} active={!!draft.categories?.includes(c)} onClick={() => toggleCat(c)}>
@@ -97,7 +110,7 @@ export function FilterModal({ initial, onApply, onClose }: Props) {
 
         <div style={{ display: "flex", gap: 8, marginTop: 24 }}>
           <button
-            onClick={() => setDraft({ gu: initial.gu })}
+            onClick={() => setDraft({ gus: initial.gus, sortBy: initial.sortBy })}
             style={{ flex: 1, padding: 14, borderRadius: 12, border: "1px solid #ddd", background: "#fff", fontWeight: 700 }}
           >
             초기화

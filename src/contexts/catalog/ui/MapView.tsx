@@ -155,6 +155,8 @@ export function MapView({ shops, highlightedId, center, myPos, onPinClick, onBou
     markersById.current = byId;
 
     // 파트너 핀: 클러스터에 안 넣고 지도에 직접 → 줌아웃해도 묻히지 않음, 최상단
+    // + 이름 라벨(CustomOverlay) 항상 표시 → 네이버 광고핀처럼 특별하게
+    const partnerOverlays: KakaoAny[] = [];
     const partnerMarkers = partners.map((s) => {
       const marker = new kakao.maps.Marker({
         position: new kakao.maps.LatLng(s.coord.lat, s.coord.lng),
@@ -165,6 +167,21 @@ export function MapView({ shops, highlightedId, center, myPos, onPinClick, onBou
       kakao.maps.event.addListener(marker, "click", () => onClickRef.current(s));
       marker.setMap(map);
       byId[s.id] = marker;
+
+      const el = document.createElement("div");
+      el.textContent = `⭐ ${s.name}`;
+      el.style.cssText =
+        "background:#fff;border:1.5px solid #f59e0b;color:#b45309;font-size:11px;font-weight:800;" +
+        "padding:3px 8px;border-radius:11px;box-shadow:0 2px 7px rgba(0,0,0,.22);white-space:nowrap;cursor:pointer;";
+      el.onclick = () => onClickRef.current(s);
+      const ov = new kakao.maps.CustomOverlay({
+        position: new kakao.maps.LatLng(s.coord.lat, s.coord.lng),
+        content: el,
+        yAnchor: 2.5, // 핀 위로
+        zIndex: 11,
+      });
+      ov.setMap(map);
+      partnerOverlays.push(ov);
       return marker;
     });
 
@@ -197,6 +214,7 @@ export function MapView({ shops, highlightedId, center, myPos, onPinClick, onBou
       clusterer.clear();
       clusterer.setMap(null);
       partnerMarkers.forEach((m) => m.setMap(null));
+      partnerOverlays.forEach((o) => o.setMap(null));
       markersById.current = {};
     };
   }, [map, shops]);
