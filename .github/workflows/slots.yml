@@ -2,30 +2,34 @@ name: slot-ingest
 
 on:
   schedule:
-    - cron: "0 */2 * * *" # 2시간마다 (UTC)
-  workflow_dispatch: {} # 수동 실행 버튼
+    - cron: "0 * * * *" # 매시 정각 → 그룹 0 (절반)
+    - cron: "30 * * * *" # 매시 30분 → 그룹 1 (나머지 절반)
+  workflow_dispatch: {} # 수동 (그룹 0 실행)
 
 concurrency:
-  group: slot-ingest
+  group: slot-ingest-${{ github.event.schedule }}
   cancel-in-progress: true
 
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    timeout-minutes: 20 # 25분 차단선 전에 끝남 (샤드당 ~7분). 못 끝내면 그 샤드만 다음 회차로.
-    strategy:
-      fail-fast: false # 한 샤드 실패해도 나머지 진행
-      matrix:
-        shard: [0, 1, 2, 3] # 4분할 = 각 러너 다른 IP, ~6.6k곳/7분 → 차단 안 당함
+    timeout-minutes: 18 # 시간예산 14분 + 저장 여유. 25분 차단선 한참 아래.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: "Ingest slots (shard ${{ matrix.shard }}/4) → Supabase"
+      - name: 시간대로 그룹(샤드) 결정
+        run: |
+          if [ "${{ github.event.schedule }}" = "30 * * * *" ]; then
+            echo "SHARD=1" >> "$GITHUB_ENV"
+          else
+            echo "SHARD=0" >> "$GITHUB_ENV"
+          fi
+      - name: Ingest slots → Supabase
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-          SHARD: ${{ matrix.shard }}
-          NUM_SHARDS: "4"
+          NUM_SHARDS: "2"
+          BUDGET_SEC: "840"
         run: python scraper/slot_ingest.py

@@ -8,6 +8,7 @@ env: SUPABASE_URL, SUPABASE_SECRET_KEY  (GitHub Actions Secrets에서 주입)
 로컬 실행 시엔 같은 폴더의 .env 도 읽음.
 """
 import json, os, re, sys, time, urllib.request, urllib.error, zlib
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -28,9 +29,11 @@ if _local.exists():
 SB_URL = ENV["SUPABASE_URL"].rstrip("/")
 SB_SECRET = ENV["SUPABASE_SECRET_KEY"]
 
-# 샤딩 — 매트릭스 잡으로 분할(각 러너 다른 IP, 25분 차단선 안 넘게). 미설정 시 단일.
+# 샤딩 — 분할 실행(각 러너 다른 IP/시간, 25분 차단선 안 넘게). 미설정 시 단일.
 SHARD = int(ENV.get("SHARD", "0"))
 NUM_SHARDS = int(ENV.get("NUM_SHARDS", "1"))
+# 시간 예산(초) — 이만큼 지나면 수집 멈추고 받은 것만 저장 → 타임아웃으로 죽지 않음
+BUDGET_SEC = int(ENV.get("BUDGET_SEC", "840"))  # 14분 (Actions timeout 18분보다 짧게)
 
 GQL = "https://m.booking.naver.com/graphql?opName=hourlySchedule"
 QUERY = ("query hourlySchedule($scheduleParams: ScheduleParams){schedule(input:$scheduleParams)"
@@ -140,30 +143,39 @@ def main():
     seen = {}
     item_tmrw = {}  # (shop_id, item_id) → 내일 빈 시간 set {"14:00", ...}
     ok = err = 0
-    err_shops = set()  # 한 item이라도 실패한 샵 → 슬롯 손대지 않음(옛 데이터 보존, 차단돼도 빈자리 안 사라짐)
+    err_shops = set()  # 한 item이라도 실패한 샵 → 슬롯 손대지 않음(옛 데이터 보존)
+    shop_total = Counter(t["id"] for t in tasks)  # 샵별 총 item 작업 수
+    shop_done = Counter()                          # 샵별 성공한 작업 수
     t0 = time.time()
-    with ThreadPoolExecutor(max_workers=16) as ex:
-        futs = {ex.submit(fetch_slots, t["biz_type"], t["biz_id"], t["item_id"], start_ymd, end_ymd): t for t in tasks}
-        for fut in as_completed(futs):
-            t = futs[fut]
-            try:
-                for d, tm in fut.result():
-                    key = (t["id"], d, tm)
-                    if key not in seen:  # 합집합 dedupe (DB PK도 동일하게 합치지만 전송량 절약)
-                        seen[key] = {"shop_id": t["id"], "biz_id": t["biz_id"], "item_id": t["item_id"],
-                                     "slot_date": d, "start_time": tm}
-                    if d == tomorrow_ymd:
-                        ik = (t["id"], t["item_id"])
-                        item_tmrw.setdefault(ik, set()).add(tm[:5])  # "14:00:00" → "14:00"
-                ok += 1
-            except Exception:
-                err += 1
-                err_shops.add(t["id"])
-    # 성공 샵만 갱신 — 실패(차단) 샵은 옛 슬롯 그대로 보존(통삭제로 빈자리 증발 방지)
-    safe_ids = [t["id"] for t in targets if t["id"] not in err_shops]
+    deadline = t0 + BUDGET_SEC                      # 예산 초과 시 멈추고 받은 것만 저장
+    timed_out = False
+    ex = ThreadPoolExecutor(max_workers=16)
+    futs = {ex.submit(fetch_slots, t["biz_type"], t["biz_id"], t["item_id"], start_ymd, end_ymd): t for t in tasks}
+    for fut in as_completed(futs):
+        if time.time() > deadline:
+            timed_out = True
+            break
+        t = futs[fut]
+        try:
+            for d, tm in fut.result():
+                key = (t["id"], d, tm)
+                if key not in seen:  # 합집합 dedupe
+                    seen[key] = {"shop_id": t["id"], "biz_id": t["biz_id"], "item_id": t["item_id"],
+                                 "slot_date": d, "start_time": tm}
+                if d == tomorrow_ymd:
+                    ik = (t["id"], t["item_id"])
+                    item_tmrw.setdefault(ik, set()).add(tm[:5])  # "14:00:00" → "14:00"
+            ok += 1
+            shop_done[t["id"]] += 1
+        except Exception:
+            err += 1
+            err_shops.add(t["id"])
+    ex.shutdown(wait=False, cancel_futures=True)  # 남은 작업 취소(대기 없음) → 예산 내 종료
+    # 모든 item이 성공한 샵만 갱신. 미완(예산초과)·실패 샵은 옛 슬롯 보존 → 빈자리 증발 방지.
+    safe_ids = [sid for sid in shop_total if shop_done[sid] == shop_total[sid] and sid not in err_shops]
     safe_set = set(safe_ids)
     rows = [v for v in seen.values() if v["shop_id"] in safe_set]
-    print(f"   조회: 성공 {ok} 실패 {err} | 갱신대상 {len(safe_ids)}곳 | 빈 슬롯 {len(rows)}행 | {time.time()-t0:.1f}초")
+    print(f"   조회: 성공 {ok} 실패 {err}{' ⏱️예산초과(부분저장)' if timed_out else ''} | 갱신 {len(safe_ids)}곳 | 빈슬롯 {len(rows)}행 | {time.time()-t0:.0f}초")
 
     # 슬롯 삭제 (무료티어 statement timeout 회피: 날짜별 + 시간버킷 + 재시도)
     def sb_del(path, tries=4):
