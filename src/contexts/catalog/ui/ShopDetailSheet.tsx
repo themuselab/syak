@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useShopDetail } from "./hooks/useShopDetail";
 import { thumbW, FALLBACK_IMAGE, onImgError } from "../../../shared/ui/image";
 import { usecases } from "../../../app/composition-root";
@@ -88,13 +88,18 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
 
       {detail && (
         <>
-          {/* 이미지 */}
+          {/* 이미지 — 작업 사진 우선(대표 → 가게갤러리 → 손님 리뷰사진), 가격판(menu)은 맨 뒤 */}
           <Gallery
             images={[
-              detail.images.representative,
-              ...detail.images.gallery,
-              ...detail.images.menu,
-            ].filter(Boolean) as string[]}
+              ...new Set(
+                [
+                  detail.images.representative,
+                  ...detail.images.gallery,
+                  ...detail.images.review,
+                  ...detail.images.menu,
+                ].filter(Boolean) as string[],
+              ),
+            ]}
           />
 
           <div style={{ padding: "14px 16px 100px" }}>
@@ -215,36 +220,70 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
 
 function Gallery({ images }: { images: string[] }) {
   const [idx, setIdx] = useState(0);
+  const scrollRef = useRef<HTMLDivElement>(null);
   if (!images.length)
     return (
       <img
         src={FALLBACK_IMAGE}
         alt=""
-        style={{ width: "100%", height: 280, objectFit: "cover", display: "block", background: "#fdeef2" }}
+        style={{ width: "100%", height: 300, objectFit: "cover", display: "block", background: "#fdeef2" }}
       />
     );
-  const shown = images.slice(0, 10);
+  const shown = images.slice(0, 20);
+  const jump = (i: number) => {
+    const el = scrollRef.current;
+    if (el) el.scrollTo({ left: i * el.clientWidth, behavior: "smooth" });
+  };
   return (
-    <div style={{ position: "relative" }}>
-      <div
-        onScroll={(e) => setIdx(Math.round(e.currentTarget.scrollLeft / e.currentTarget.clientWidth))}
-        style={{ display: "flex", overflowX: "auto", scrollSnapType: "x mandatory", scrollbarWidth: "none" }}
-      >
-        {shown.map((src, i) => (
-          <img
-            key={i}
-            src={thumbW(src, 700)}
-            onError={onImgError}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            style={{ width: "100%", height: 280, objectFit: "cover", flexShrink: 0, scrollSnapAlign: "start" }}
-          />
-        ))}
+    <div>
+      {/* 큰 사진 (스와이프) */}
+      <div style={{ position: "relative" }}>
+        <div
+          ref={scrollRef}
+          onScroll={(e) => setIdx(Math.round(e.currentTarget.scrollLeft / e.currentTarget.clientWidth))}
+          style={{ display: "flex", overflowX: "auto", scrollSnapType: "x mandatory", scrollbarWidth: "none" }}
+        >
+          {shown.map((src, i) => (
+            <img
+              key={i}
+              src={thumbW(src, 700)}
+              onError={onImgError}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              style={{ width: "100%", height: 300, objectFit: "cover", flexShrink: 0, scrollSnapAlign: "start" }}
+            />
+          ))}
+        </div>
+        {shown.length > 1 && (
+          <div style={{ position: "absolute", right: 12, bottom: 12, background: "rgba(0,0,0,.55)", color: "#fff", fontSize: 12, fontWeight: 600, borderRadius: 12, padding: "3px 11px" }}>
+            📷 {idx + 1} / {shown.length}
+          </div>
+        )}
       </div>
+      {/* 썸네일 스트립 — 작업 사진 한눈에 훑기, 탭하면 크게 */}
       {shown.length > 1 && (
-        <div style={{ position: "absolute", right: 12, bottom: 12, background: "rgba(0,0,0,.55)", color: "#fff", fontSize: 12, fontWeight: 600, borderRadius: 12, padding: "3px 11px" }}>
-          {idx + 1} / {shown.length}
+        <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "8px 12px 4px", scrollbarWidth: "none" }}>
+          {shown.map((src, i) => (
+            <img
+              key={i}
+              src={thumbW(src, 150)}
+              onError={onImgError}
+              alt=""
+              loading="lazy"
+              onClick={() => jump(i)}
+              style={{
+                width: 58,
+                height: 58,
+                objectFit: "cover",
+                borderRadius: 9,
+                flexShrink: 0,
+                cursor: "pointer",
+                border: i === idx ? "2px solid #ec4899" : "2px solid transparent",
+                opacity: i === idx ? 1 : 0.65,
+              }}
+            />
+          ))}
         </div>
       )}
     </div>
