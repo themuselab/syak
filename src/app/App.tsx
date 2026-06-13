@@ -192,7 +192,8 @@ export default function App() {
     (filter.services?.length ?? 0) +
     (filter.hasEventOnly ? 1 : 0) +
     (filter.firstVisitOnly ? 1 : 0) +
-    (filter.reservableOnly ? 1 : 0);
+    (filter.reservableOnly ? 1 : 0) +
+    (filter.partnerOnly ? 1 : 0);
 
   // 지도: 필터/검색/맞춤 없으면 경량 핀 대량 표시(밀집도), 있으면 필터된 요약 표시
   const filtering = !!q || !!chip || !!openShopIds || activeFilterCount > 0;

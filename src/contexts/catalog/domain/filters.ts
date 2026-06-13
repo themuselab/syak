@@ -21,6 +21,7 @@ export interface FilterCriteria {
   reservableOnly?: boolean;
   hasEventOnly?: boolean;
   firstVisitOnly?: boolean;
+  partnerOnly?: boolean; // 샥 파트너 가게만
   sortBy?: SortKey; // 리스트 정렬 기준 (미지정 = recommend)
 }
 
@@ -32,6 +33,7 @@ export function matchesFilter(shop: ShopSummary, c: FilterCriteria): boolean {
   if (c.reservableOnly && !shop.reservable) return false;
   if (c.hasEventOnly && !shop.hasEvent) return false;
   if (c.firstVisitOnly && !shop.firstVisitDeal) return false;
+  if (c.partnerOnly && !shop.isPartner) return false;
   return true;
 }
 
