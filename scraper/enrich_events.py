@@ -8,7 +8,7 @@
 
 env: SUPABASE_URL, SUPABASE_SECRET_KEY  (로컬은 같은 폴더 .env)
 """
-import json, os, re, sys, time, urllib.request
+import json, os, re, sys, time, urllib.request, zlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -24,6 +24,10 @@ if _local.exists():
             ENV.setdefault(k.strip(), v.strip())
 SB_URL = ENV["SUPABASE_URL"].rstrip("/")
 SB_SECRET = ENV.get("SUPABASE_SECRET_KEY") or ENV.get("SUPABASE_SECRET")
+
+# 샤딩 — 매트릭스 잡 분할(각 러너 다른 IP, 25분 차단선 안 넘게)
+SHARD = int(ENV.get("SHARD", "0"))
+NUM_SHARDS = int(ENV.get("NUM_SHARDS", "1"))
 
 UA = {"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15"}
 
@@ -54,6 +58,8 @@ def load_targets():
         frm += 1000
         if frm >= total or not rows:
             break
+    if NUM_SHARDS > 1:  # 이 러너 담당 샤드만
+        out = [r for r in out if zlib.crc32(str(r["id"]).encode()) % NUM_SHARDS == SHARD]
     return out
 
 

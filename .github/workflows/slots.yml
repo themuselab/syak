@@ -2,7 +2,7 @@ name: slot-ingest
 
 on:
   schedule:
-    - cron: "0 */2 * * *" # 2시간마다 (UTC) — 전국 4만곳이라 부하·차단 완화
+    - cron: "0 */2 * * *" # 2시간마다 (UTC)
   workflow_dispatch: {} # 수동 실행 버튼
 
 concurrency:
@@ -12,14 +12,20 @@ concurrency:
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20 # 25분 차단선 전에 끝남 (샤드당 ~7분). 못 끝내면 그 샤드만 다음 회차로.
+    strategy:
+      fail-fast: false # 한 샤드 실패해도 나머지 진행
+      matrix:
+        shard: [0, 1, 2, 3] # 4분할 = 각 러너 다른 IP, ~6.6k곳/7분 → 차단 안 당함
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Ingest slots → Supabase
+      - name: "Ingest slots (shard ${{ matrix.shard }}/4) → Supabase"
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SHARD: ${{ matrix.shard }}
+          NUM_SHARDS: "4"
         run: python scraper/slot_ingest.py

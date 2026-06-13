@@ -7,7 +7,7 @@
 env: SUPABASE_URL, SUPABASE_SECRET_KEY  (GitHub Actions Secrets에서 주입)
 로컬 실행 시엔 같은 폴더의 .env 도 읽음.
 """
-import json, os, re, sys, time, urllib.request, urllib.error
+import json, os, re, sys, time, urllib.request, urllib.error, zlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -27,6 +27,10 @@ if _local.exists():
             ENV.setdefault(k.strip(), v.strip())
 SB_URL = ENV["SUPABASE_URL"].rstrip("/")
 SB_SECRET = ENV["SUPABASE_SECRET_KEY"]
+
+# 샤딩 — 매트릭스 잡으로 분할(각 러너 다른 IP, 25분 차단선 안 넘게). 미설정 시 단일.
+SHARD = int(ENV.get("SHARD", "0"))
+NUM_SHARDS = int(ENV.get("NUM_SHARDS", "1"))
 
 GQL = "https://m.booking.naver.com/graphql?opName=hourlySchedule"
 QUERY = ("query hourlySchedule($scheduleParams: ScheduleParams){schedule(input:$scheduleParams)"
@@ -58,6 +62,8 @@ def load_targets():
         frm += 1000
         if frm >= total or not rows:
             break
+    if NUM_SHARDS > 1:  # 이 러너 담당 샤드만 (안정적 해시 분할)
+        out = [r for r in out if zlib.crc32(str(r["id"]).encode()) % NUM_SHARDS == SHARD]
     return out
 
 
@@ -134,6 +140,7 @@ def main():
     seen = {}
     item_tmrw = {}  # (shop_id, item_id) → 내일 빈 시간 set {"14:00", ...}
     ok = err = 0
+    err_shops = set()  # 한 item이라도 실패한 샵 → 슬롯 손대지 않음(옛 데이터 보존, 차단돼도 빈자리 안 사라짐)
     t0 = time.time()
     with ThreadPoolExecutor(max_workers=16) as ex:
         futs = {ex.submit(fetch_slots, t["biz_type"], t["biz_id"], t["item_id"], start_ymd, end_ymd): t for t in tasks}
@@ -151,8 +158,12 @@ def main():
                 ok += 1
             except Exception:
                 err += 1
-    rows = list(seen.values())
-    print(f"   조회: 성공 {ok} 실패 {err} | 빈 슬롯 {len(rows)}행 | {time.time()-t0:.1f}초")
+                err_shops.add(t["id"])
+    # 성공 샵만 갱신 — 실패(차단) 샵은 옛 슬롯 그대로 보존(통삭제로 빈자리 증발 방지)
+    safe_ids = [t["id"] for t in targets if t["id"] not in err_shops]
+    safe_set = set(safe_ids)
+    rows = [v for v in seen.values() if v["shop_id"] in safe_set]
+    print(f"   조회: 성공 {ok} 실패 {err} | 갱신대상 {len(safe_ids)}곳 | 빈 슬롯 {len(rows)}행 | {time.time()-t0:.1f}초")
 
     # 슬롯 삭제 (무료티어 statement timeout 회피: 날짜별 + 시간버킷 + 재시도)
     def sb_del(path, tries=4):
@@ -163,17 +174,12 @@ def main():
                 time.sleep(2 * (i + 1))
         return False
 
-    def del_date(d):
-        if sb_del(f"slots?slot_date=eq.{d}"):
-            return
-        # 한 날짜가 너무 크면 시간대로 쪼개서
-        bks = ["00:00", "11:00", "13:00", "15:00", "17:00", "19:00", "23:59"]
-        for a, b in zip(bks, bks[1:]):
-            sb_del(f"slots?slot_date=eq.{d}&start_time=gte.{a}:00&start_time=lt.{b}:00")
-
-    sb_del(f"slots?slot_date=lt.{start_ymd}")  # 과거 정리 (1일치, 작음)
-    for off in range(DAYS):                     # 수집창 날짜별로 비우기
-        del_date((today + timedelta(days=off)).strftime("%Y-%m-%d"))
+    # 성공 샵의 수집창 슬롯만 삭제 (shop_id 청크 + 날짜창) → 부분 차단돼도 다른 샵 데이터 안 건드림
+    for i in range(0, len(safe_ids), 120):
+        chunk = ",".join(str(x) for x in safe_ids[i:i+120])
+        sb_del(f"slots?slot_date=gte.{start_ymd}&slot_date=lte.{end_ymd}&shop_id=in.({chunk})")
+    if SHARD == 0:
+        sb_del(f"slots?slot_date=lt.{start_ymd}")  # 과거 정리 (전역, 작음 — 샤드0만)
     inserted = 0
     for i in range(0, len(rows), 500):
         sb("POST", "slots", body=rows[i:i+500], prefer="return=minimal,resolution=merge-duplicates")
@@ -187,8 +193,10 @@ def main():
         nm = clean_item_name(name_map.get(sid, {}).get(iid) or "예약")
         summary.setdefault(sid, {}).setdefault(nm, set()).update(times)
     sum_rows = []
-    for tg in targets:  # 대상 전체 갱신(자리 없는 샵은 [] 로 초기화 → 묵은 데이터 제거)
+    for tg in targets:  # 성공 샵만 갱신(자리 없으면 [] 초기화). 실패 샵은 요약도 보존.
         sid = tg["id"]
+        if sid not in safe_set:
+            continue
         by_name = summary.get(sid, {})
         items = sorted(({"name": n, "times": sorted(ts)[:12]} for n, ts in by_name.items()),
                        key=lambda x: -len(x["times"]))[:6]

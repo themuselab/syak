@@ -12,14 +12,20 @@ concurrency:
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 20 # 25분 차단선 전에 끝남 (샤드당 ~7분)
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3] # 4분할 = 각 러너 다른 IP → 차단 안 당함
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Ingest events/discounts → Supabase
+      - name: "Ingest events (shard ${{ matrix.shard }}/4) → Supabase"
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SHARD: ${{ matrix.shard }}
+          NUM_SHARDS: "4"
         run: python scraper/enrich_events.py
