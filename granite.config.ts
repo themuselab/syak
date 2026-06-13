@@ -15,6 +15,6 @@ export default defineConfig({
       build: "vite build",
     },
   },
-  permissions: [],
+  permissions: [{ name: "geolocation", access: "access" }],
   outdir: "dist",
 });
