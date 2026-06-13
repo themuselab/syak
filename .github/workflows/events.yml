@@ -1,0 +1,25 @@
+name: event-ingest
+
+on:
+  schedule:
+    - cron: "30 18 * * *" # 매일 1회 (UTC 18:30 = KST 03:30) — 할인/이벤트 갱신
+  workflow_dispatch: {} # 수동 실행 버튼
+
+concurrency:
+  group: event-ingest
+  cancel-in-progress: true
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Ingest events/discounts → Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: python scraper/enrich_events.py
