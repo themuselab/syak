@@ -12,11 +12,11 @@ concurrency:
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    timeout-minutes: 20 # 25분 차단선 전에 끝남 (샤드당 ~7분)
+    timeout-minutes: 18 # 시간예산 14분 + 여유. 빠른실패라 차단돼도 안 멈춤.
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3] # 4분할 = 각 러너 다른 IP → 차단 안 당함
+        shard: [0, 1, 2, 3] # 4분할 = 각 러너 다른 IP
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -28,4 +28,5 @@ jobs:
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           SHARD: ${{ matrix.shard }}
           NUM_SHARDS: "4"
+          BUDGET_SEC: "840"
         run: python scraper/enrich_events.py

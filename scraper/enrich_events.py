@@ -28,6 +28,7 @@ SB_SECRET = ENV.get("SUPABASE_SECRET_KEY") or ENV.get("SUPABASE_SECRET")
 # 샤딩 — 매트릭스 잡 분할(각 러너 다른 IP, 25분 차단선 안 넘게)
 SHARD = int(ENV.get("SHARD", "0"))
 NUM_SHARDS = int(ENV.get("NUM_SHARDS", "1"))
+BUDGET_SEC = int(ENV.get("BUDGET_SEC", "840"))  # 시간예산 14분 — 넘으면 받은 것만 저장
 
 UA = {"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15"}
 
@@ -101,7 +102,7 @@ def parse_event(html):
     return None, None
 
 
-def fetch_one(r, tries=5):
+def fetch_one(r, tries=2):  # 빠른 실패 — 차단은 재시도해도 안 풀림(같은 IP). skip 후 다음 회차에.
     item = (r.get("item_ids") or ([r["item_id"]] if r.get("item_id") else [None]))[0]
     if not item:
         return r["id"], None, None
@@ -117,7 +118,7 @@ def fetch_one(r, tries=5):
         except Exception:
             if i == tries - 1:
                 return r["id"], "__ERR__", None
-            time.sleep(min(1.5 * (2 ** i), 20) + (hash(r["id"]) % 3))  # 지수 백오프 + 지터
+            time.sleep(0.5)  # 짧게 한 번만 재시도 (긴 백오프 X — 차단 회복 안 됨)
 
 
 def upsert_rows(rows):
@@ -138,20 +139,29 @@ def main():
     targets = load_targets()
     print(f"🎟️  이벤트 수집 대상: {len(targets):,}곳")
     t0 = time.time()
+    deadline = t0 + BUDGET_SEC  # 예산 초과 시 멈추고 받은 것만 저장 → 타임아웃으로 안 죽음
     rows, found, err = [], 0, 0
     done = 0
-    with ThreadPoolExecutor(max_workers=12) as ex:  # GitHub Actions(신선 IP) — slot_ingest처럼 견딤
-        for fut in as_completed([ex.submit(fetch_one, r) for r in targets]):
-            sid, ed, ep = fut.result()
-            if ed == "__ERR__":
-                err += 1
-                continue  # 에러는 기존값 보존 (덮어쓰지 않음)
-            rows.append({"id": sid, "event_desc": ed, "event_price": ep})
-            if ed:
-                found += 1
-            done += 1
-            if (done + err) % 2000 == 0:
-                print(f"   …{done+err:,}곳 ({time.time()-t0:.0f}초, 할인 {found}, 차단/에러 {err})", flush=True)
+    timed_out = False
+    ex = ThreadPoolExecutor(max_workers=12)
+    futs = [ex.submit(fetch_one, r) for r in targets]
+    for fut in as_completed(futs):
+        if time.time() > deadline:
+            timed_out = True
+            break
+        sid, ed, ep = fut.result()
+        if ed == "__ERR__":
+            err += 1
+            continue  # 에러/차단은 기존값 보존 (덮어쓰지 않음)
+        rows.append({"id": sid, "event_desc": ed, "event_price": ep})
+        if ed:
+            found += 1
+        done += 1
+        if (done + err) % 2000 == 0:
+            print(f"   …{done+err:,}곳 ({time.time()-t0:.0f}초, 할인 {found}, 차단/에러 {err})", flush=True)
+    ex.shutdown(wait=False, cancel_futures=True)  # 남은 작업 취소 → 예산 내 종료
+    if timed_out:
+        print(f"   ⏱️ 예산({BUDGET_SEC}s) 초과 → {done+err:,}곳까지만 처리(나머지 다음 회차)", flush=True)
     # 중간 저장 (컬럼 없거나 업서트 실패해도 재수집 불필요)
     Path(__file__).parent.joinpath("events_cache.json").write_text(
         json.dumps(rows, ensure_ascii=False), encoding="utf-8")
