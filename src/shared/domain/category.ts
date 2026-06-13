@@ -42,12 +42,24 @@ export const DAEGU_GU = [
   "대구 수성구", "대구 달서구", "대구 달성군",
 ] as const;
 
+// 광주 광역시 (저장 라벨 "광주 {구}")
+export const GWANGJU_GU = ["광주 동구", "광주 서구"] as const;
+
+// 경상 (경남: 창원·진주 / 경북: 포항) — 데이터 있는 주요 도시
+export const GYEONGSANG_SI = ["창원시", "진주시", "포항시"] as const;
+
+// 전라 (전북: 전주 / 전남: 여수)
+export const JEOLLA_SI = ["전주시", "여수시"] as const;
+
 export type District =
   | (typeof SEOUL_GU)[number]
   | (typeof GYEONGGI_SI)[number]
   | (typeof INCHEON_GU)[number]
   | (typeof BUSAN_GU)[number]
-  | (typeof DAEGU_GU)[number];
+  | (typeof DAEGU_GU)[number]
+  | (typeof GWANGJU_GU)[number]
+  | (typeof GYEONGSANG_SI)[number]
+  | (typeof JEOLLA_SI)[number];
 
 // 예약 item에서 추출한 시술 태그 (backfill_booking.py의 SERVICE_TAGS 라벨과 동일)
 // "젤네일 되는 샵 찾기" 발견 필터용

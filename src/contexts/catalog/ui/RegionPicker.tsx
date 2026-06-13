@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { SEOUL_GU, GYEONGGI_SI, INCHEON_GU, BUSAN_GU, DAEGU_GU } from "../../../shared/domain/category";
+import { SEOUL_GU, GYEONGGI_SI, INCHEON_GU, BUSAN_GU, DAEGU_GU, GWANGJU_GU, GYEONGSANG_SI, JEOLLA_SI } from "../../../shared/domain/category";
 
 type Props = {
   selected: string[];
@@ -26,35 +26,40 @@ export function RegionPicker({ selected, onApply, onClose }: Props) {
           right: 0,
           background: "#fff",
           borderRadius: "18px 18px 0 0",
-          paddingBottom: 88,
-          maxHeight: "74vh",
-          overflowY: "auto",
-          overscrollBehavior: "contain",
-          WebkitOverflowScrolling: "touch",
+          maxHeight: "80vh",
+          display: "flex",
+          flexDirection: "column",
         }}
       >
-        <div style={{ padding: "20px 20px 0" }}>
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 6 }}>
-            <h2 style={{ fontSize: 17, fontWeight: 800, margin: 0 }}>지역 선택</h2>
-            {sel.length > 0 && (
-              <button onClick={() => setSel([])} style={{ border: "none", background: "transparent", color: "#999", fontSize: 13, fontWeight: 600 }}>
-                전체 해제
-              </button>
-            )}
+        {/* 스크롤 영역 */}
+        <div style={{ overflowY: "auto", overscrollBehavior: "contain", WebkitOverflowScrolling: "touch", flex: 1 }}>
+          <div style={{ padding: "20px 20px 0" }}>
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 6 }}>
+              <h2 style={{ fontSize: 17, fontWeight: 800, margin: 0 }}>지역 선택</h2>
+              {sel.length > 0 && (
+                <button onClick={() => setSel([])} style={{ border: "none", background: "transparent", color: "#999", fontSize: 13, fontWeight: 600 }}>
+                  전체 해제
+                </button>
+              )}
+            </div>
+            <p style={{ fontSize: 12, color: "#ec4899", background: "#fdeef6", padding: "8px 11px", borderRadius: 9, margin: "0 0 16px", fontWeight: 600 }}>
+              여러 지역 동시 선택 가능 — 예: 강남구 + 강동구 같이 보기
+            </p>
           </div>
-          <p style={{ fontSize: 12, color: "#ec4899", background: "#fdeef6", padding: "8px 11px", borderRadius: 9, margin: "0 0 16px", fontWeight: 600 }}>
-            여러 지역 동시 선택 가능 — 예: 강남구 + 강동구 같이 보기
-          </p>
+
+          <Section label="서울" items={SEOUL_GU} sel={sel} onToggle={toggle} />
+          <Section label="경기" items={GYEONGGI_SI} sel={sel} onToggle={toggle} />
+          <Section label="인천" items={INCHEON_GU} sel={sel} onToggle={toggle} strip="인천 " />
+          <Section label="부산" items={BUSAN_GU} sel={sel} onToggle={toggle} strip="부산 " />
+          <Section label="대구" items={DAEGU_GU} sel={sel} onToggle={toggle} strip="대구 " />
+          <Section label="광주" items={GWANGJU_GU} sel={sel} onToggle={toggle} strip="광주 " />
+          <Section label="경상" items={GYEONGSANG_SI} sel={sel} onToggle={toggle} />
+          <Section label="전라" items={JEOLLA_SI} sel={sel} onToggle={toggle} />
+          <div style={{ height: 6 }} />
         </div>
 
-        <Section label="서울" items={SEOUL_GU} sel={sel} onToggle={toggle} />
-        <Section label="경기" items={GYEONGGI_SI} sel={sel} onToggle={toggle} />
-        <Section label="인천" items={INCHEON_GU} sel={sel} onToggle={toggle} strip="인천 " />
-        <Section label="부산" items={BUSAN_GU} sel={sel} onToggle={toggle} strip="부산 " />
-        <Section label="대구" items={DAEGU_GU} sel={sel} onToggle={toggle} strip="대구 " />
-
-        {/* 적용 버튼 (하단 고정) */}
-        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: 16, background: "#fff", borderTop: "1px solid #f1f1f1" }}>
+        {/* 적용 버튼 (하단 고정 — 스크롤 영역 밖) */}
+        <div style={{ flex: "none", padding: 16, background: "#fff", borderTop: "1px solid #f1f1f1" }}>
           <button
             onClick={() => {
               onApply(sel);
