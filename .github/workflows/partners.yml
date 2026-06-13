@@ -1,0 +1,30 @@
+name: partner-sync
+
+on:
+  schedule:
+    - cron: "15 * * * *" # 매시 15분 — 새 파트너 감지해 데이터 새로고침
+  workflow_dispatch: {} # 수동 즉시 실행
+
+concurrency:
+  group: partner-sync
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Playwright 설치
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: 파트너 동기화 (사진·가격 재수집)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: python scraper/sync_partners.py
