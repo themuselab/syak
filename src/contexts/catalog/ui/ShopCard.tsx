@@ -37,7 +37,11 @@ export function ShopCard({ shop, onClick }: Props) {
         </div>
         <div style={{ display: "flex", gap: 6, marginTop: 7, flexWrap: "wrap" }}>
           {shop.isPartner && <Badge tone="partner">샥 파트너</Badge>}
-          {shop.hasEvent && <Badge tone="event">{shop.eventPrice ?? "할인"}</Badge>}
+          {shop.pilotCoupon ? (
+            <Badge tone="event">{shop.pilotCoupon}</Badge>
+          ) : (
+            shop.hasEvent && <Badge tone="event">{shop.eventPrice ?? "할인"}</Badge>
+          )}
           <Badge tone="price">{shop.priceTier}</Badge>
           {shop.firstVisitDeal && <Badge tone="first">첫방문 특가</Badge>}
         </div>

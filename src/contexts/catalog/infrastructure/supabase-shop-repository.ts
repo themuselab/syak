@@ -5,7 +5,7 @@ import type { ShopSummary, ShopDetail, ShopPin } from "../domain/shop";
 import { sbFetch } from "../../../shared/platform/supabase";
 
 const SUMMARY_COLS =
-  "id,name,category,categories,gu,lat,lng,representative_image,review_count,price_tier,min_price,first_visit_deal,has_event,reservable,services,event_desc,event_price,is_partner";
+  "id,name,category,categories,gu,lat,lng,representative_image,review_count,price_tier,min_price,first_visit_deal,has_event,reservable,services,event_desc,event_price,is_partner,pilot_coupon";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function toSummary(r: any): ShopSummary {
@@ -25,6 +25,7 @@ function toSummary(r: any): ShopSummary {
     eventDesc: r.event_desc ?? null,
     eventPrice: r.event_price ?? null,
     isPartner: !!r.is_partner,
+    pilotCoupon: r.pilot_coupon ?? null,
     reservable: r.reservable,
     services: r.services ?? [],
   };
@@ -103,7 +104,7 @@ export class SupabaseShopRepository implements ShopRepository {
 
   async byId(id: string): Promise<ShopDetail | null> {
     if (this.detailCache.has(id)) return this.detailCache.get(id)!;
-    const res = await sbFetch(`shops?id=eq.${encodeURIComponent(id)}&select=detail,services,item_ids,slot_summary,event_desc,event_price,biz_id,biz_type,is_partner`);
+    const res = await sbFetch(`shops?id=eq.${encodeURIComponent(id)}&select=detail,services,item_ids,slot_summary,event_desc,event_price,biz_id,biz_type,is_partner,pilot_coupon,pilot_hours`);
     let detail: ShopDetail | null = null;
     if (res.ok || res.status === 206) {
       const rows = await res.json();
@@ -127,6 +128,8 @@ export class SupabaseShopRepository implements ShopRepository {
           eventDesc: row.event_desc ?? null,
           eventPrice: row.event_price ?? null,
           isPartner: !!row.is_partner,
+          pilotCoupon: row.pilot_coupon ?? null,
+          pilotHours: row.pilot_hours ?? null,
         };
       }
     }

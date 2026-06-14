@@ -130,8 +130,21 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
               {detail.services.length > 0 && ` · ${detail.services.slice(0, 3).join("·")}`}
             </div>
 
-            {/* 할인/이벤트 박스 */}
-            {detail.hasEvent && detail.eventDesc && (
+            {/* 파일럿(파트너) 전용 배너 — 사장님 확인된 할인 + 빈 시간 (수동 큐레이션) */}
+            {detail.pilotCoupon && (
+              <div style={{ background: "linear-gradient(135deg,#fff8e8,#ffefcb)", border: "1.5px solid #f5cf7a", borderRadius: 13, padding: "12px 13px", marginTop: 12 }}>
+                <span style={{ display: "inline-block", background: "#f59e0b", color: "#fff", fontSize: 11, fontWeight: 800, padding: "3px 9px", borderRadius: 8, marginBottom: 7 }}>
+                  샥 파트너 혜택
+                </span>
+                <div style={{ fontSize: 14, lineHeight: 1.45, color: "#92600c", fontWeight: 700 }}>{detail.pilotCoupon}</div>
+                {detail.pilotHours && (
+                  <div style={{ fontSize: 12, color: "#b07d1e", marginTop: 5, fontWeight: 600 }}>빈자리: {detail.pilotHours}</div>
+                )}
+              </div>
+            )}
+
+            {/* 할인/이벤트 박스 (스크랩) — 파일럿 배너 없을 때만 */}
+            {!detail.pilotCoupon && detail.hasEvent && detail.eventDesc && (
               <div style={{ background: "linear-gradient(135deg,#fff0f7,#ffe4f0)", border: "1.5px solid #f8c6dd", borderRadius: 13, padding: "12px 13px", marginTop: 12 }}>
                 <span style={{ display: "inline-block", background: "#ec4899", color: "#fff", fontSize: 11, fontWeight: 800, padding: "3px 9px", borderRadius: 8, marginBottom: 7 }}>
                   {detail.eventPrice ?? "할인"}

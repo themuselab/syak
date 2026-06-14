@@ -49,6 +49,7 @@ export interface ShopSummary {
   eventDesc: string | null; // 할인/이벤트 원문 텍스트
   eventPrice: string | null; // 추출 라벨 ("50% 할인", "29,000원~")
   isPartner: boolean; // 샥 파트너(파일럿) → 리스트 상단 + 배지
+  pilotCoupon: string | null; // 파일럿 샵 전용 이벤트/할인 문구(수동, 사장님 기존 할인 등)
   reservable: boolean;
   services: string[]; // 시술 태그(젤네일/패디/속눈썹…) — 예약 item에서 추출
 }
@@ -82,6 +83,7 @@ export interface ShopDetail extends ShopSummary {
   blogReviewTotal: number;
   staffCount: number; // 예약 item(디자이너/메뉴) 수 — 2 이상이면 슬롯 "합산 기준" 안내
   slotSummary: { name: string; times: string[] }[]; // 내일 기준 item(디자이너/메뉴)별 빈 시간
+  pilotHours: string | null; // 파일럿 샵 빈 시간대 안내 ("주로 평일 낮" 등)
 }
 
 // ── 도메인 규칙 (순수 함수) ───────────────────────────────
