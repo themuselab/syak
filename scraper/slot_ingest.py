@@ -198,8 +198,10 @@ def main():
         inserted += len(rows[i:i+500])
     print(f"✅ Supabase 저장: {inserted}행 ({start_ymd}~{end_ymd})")
 
-    # 오늘 빈자리 있는 샵 (지도 초록핀용)
-    today_shops = {r["shop_id"] for r in rows if r["slot_date"] == start_ymd}
+    # 오늘 "지금 시간 이후" 빈자리 있는 샵 (지도 초록핀용) — 지난 시간 슬롯은 제외
+    now_hms = datetime.now(kst).strftime("%H:%M:%S")
+    today_shops = {r["shop_id"] for r in rows
+                   if r["slot_date"] == start_ymd and r["start_time"] >= now_hms}
 
     # 상세용 item별 "내일" 빈 시간 요약 → shops.slot_summary 벌크 업서트
     # 같은 이름(디자이너/메뉴)끼리 시간 합치고, 자리 많은 순 top6 · item당 시간 top12
