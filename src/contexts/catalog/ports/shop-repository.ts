@@ -19,6 +19,8 @@ export interface ShopRepository {
   byGu(gu: string, limit?: number): Promise<ShopSummary[]>;
   /** 여러 지역 동시 선택(합집합) */
   byGus(gus: string[], limit?: number): Promise<ShopSummary[]>;
+  /** 샥 파트너 가게 전체 (지역 무관) */
+  partners(limit?: number): Promise<ShopSummary[]>;
   /** 이름 검색 (서버측 ilike) */
   searchByName(query: string): Promise<ShopSummary[]>;
   /** 상세 1건 */

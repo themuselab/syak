@@ -3,14 +3,13 @@
 import type { ShopSummary, PriceTier } from "./shop";
 import type { Category } from "../../../shared/domain/category";
 
-export type SortKey = "recommend" | "distance" | "reviews" | "priceLow" | "priceHigh";
+export type SortKey = "recommend" | "priceLow" | "priceHigh" | "partner";
 
 export const SORT_OPTIONS: { key: SortKey; label: string }[] = [
-  { key: "recommend", label: "추천순" },
-  { key: "distance", label: "거리순" },
-  { key: "reviews", label: "리뷰 많은순" },
+  { key: "recommend", label: "기본순" },
   { key: "priceLow", label: "가격 낮은순" },
   { key: "priceHigh", label: "가격 높은순" },
+  { key: "partner", label: "샥 파트너" },
 ];
 
 export interface FilterCriteria {

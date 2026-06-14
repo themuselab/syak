@@ -96,6 +96,11 @@ export class SupabaseShopRepository implements ShopRepository {
     return (await this.rows(q)).map(toSummary);
   }
 
+  async partners(limit = 200): Promise<ShopSummary[]> {
+    const q = `shops?select=${SUMMARY_COLS}&is_partner=eq.true&order=review_count.desc&limit=${limit}`;
+    return (await this.rows(q)).map(toSummary);
+  }
+
   async searchByName(query: string): Promise<ShopSummary[]> {
     const q0 = query.trim();
     if (!q0) return [];

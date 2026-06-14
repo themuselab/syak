@@ -97,9 +97,6 @@ export function FilterModal({ initial, onApply, onClose }: Props) {
         </Group>
 
         <Group title="혜택 · 예약">
-          <Chip active={!!draft.partnerOnly} onClick={() => setDraft((d) => ({ ...d, partnerOnly: !d.partnerOnly }))}>
-            샥 파트너
-          </Chip>
           <Chip active={!!draft.hasEventOnly} onClick={() => setDraft((d) => ({ ...d, hasEventOnly: !d.hasEventOnly }))}>
             이벤트·할인
           </Chip>

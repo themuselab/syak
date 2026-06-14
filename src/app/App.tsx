@@ -144,26 +144,39 @@ export default function App() {
     return () => clearTimeout(t);
   }, [q, searchByName]);
 
-  // 지도 영역(bounds) 변하면 그 영역 샵 로드 — 검색 중일 땐 스킵(egress 절약)
+  // 지도 영역(bounds) 변하면 그 영역 샵 로드 — 검색/파트너모드일 땐 스킵
   // 디바운스 350ms: 빠른 pan/zoom에 매번 로드하지 않고 멈춘 뒤 1회만
   const boundsTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const lastBounds = useRef<Parameters<typeof loadBounds>[0] | null>(null);
+  const sortByRef = useRef(filter.sortBy);
+  sortByRef.current = filter.sortBy;
   const onBoundsChanged = useCallback(
     (b: Parameters<typeof loadBounds>[0]) => {
-      if (qRef.current) return;
+      lastBounds.current = b;
+      if (qRef.current || sortByRef.current === "partner") return;
       if (boundsTimer.current) clearTimeout(boundsTimer.current);
       boundsTimer.current = setTimeout(() => loadBounds(b), 350);
     },
     [loadBounds],
   );
 
+  // "샥 파트너" 정렬 → 전국 파트너 직접 로드(지역 무관). 해제 시 뷰포트 복귀.
+  const prevSortBy = useRef(filter.sortBy);
+  useEffect(() => {
+    if (filter.sortBy === "partner") {
+      usecases.catalog.partners().then((ps) => showShops(ps));
+    } else if (prevSortBy.current === "partner" && lastBounds.current) {
+      loadBounds(lastBounds.current);
+    }
+    prevSortBy.current = filter.sortBy;
+  }, [filter.sortBy, showShops, loadBounds]);
+
   const displayed = useMemo(() => {
     const base = q ? nameResults : shops;
     let list = applyChip(base, chip);
     if (openShopIds) list = list.filter((s) => openShopIds.has(s.id)); // 맞춤찾기: 그 시간 빈 샵만
     const sortBy = filter.sortBy ?? "recommend";
-    if (sortBy === "reviews") {
-      list = [...list].sort((a, b) => b.reviewCount - a.reviewCount);
-    } else if (sortBy === "priceLow") {
+    if (sortBy === "priceLow") {
       list = [...list].sort((a, b) => (a.minPrice ?? Infinity) - (b.minPrice ?? Infinity));
     } else if (sortBy === "priceHigh") {
       list = [...list].sort((a, b) => (b.minPrice ?? -1) - (a.minPrice ?? -1));
@@ -213,7 +226,7 @@ export default function App() {
     (filter.partnerOnly ? 1 : 0);
 
   // 지도: 필터/검색/맞춤 없으면 경량 핀 대량 표시(밀집도), 있으면 필터된 요약 표시
-  const filtering = !!q || !!chip || !!openShopIds || activeFilterCount > 0;
+  const filtering = !!q || !!chip || !!openShopIds || activeFilterCount > 0 || filter.sortBy === "partner";
   const mapShops: ShopPin[] = filtering ? displayed : pins;
 
   const regionLabel = filter.gus?.length

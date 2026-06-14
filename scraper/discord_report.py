@@ -116,6 +116,18 @@ def main():
                             if e["event"] == "reserve_click" and e.get("shop_district"))
     region_text = "\n".join(f"· {g}: {n}" for g, n in region_clicks.most_common(8)) or "—"
 
+    # 🤝 파트너 샵 예약클릭 (파트너십 맺은 곳에 예약이 들어갔나)
+    partner_rows = sb_get("shops?is_partner=eq.true&select=id,name")
+    partner_name = {r["id"]: r.get("name") for r in partner_rows}
+    p_rc = Counter(e.get("shop_id") for e in events
+                   if e["event"] == "reserve_click" and e.get("shop_id") in partner_name)
+    p_dv = sum(1 for e in events if e["event"] == "detail_view" and e.get("shop_id") in partner_name)
+    if p_rc:
+        lines = [f"· {(partner_name.get(sid) or '?')[:14]}: {n}회" for sid, n in p_rc.most_common(8)]
+        partner_text = f"예약클릭 {sum(p_rc.values())}회 · 가게클릭 {p_dv}회\n" + "\n".join(lines)
+    else:
+        partner_text = f"예약클릭 0회 · 가게클릭 {p_dv}회 (파트너 {len(partner_rows)}곳)"
+
     # 예약 전환(추정): 클릭한 슬롯이 네이버에서 실제 예약 찼는지
     conv, conv_checked, conv_picks, conv_hits = conversions(events)
     if conv:
@@ -139,6 +151,7 @@ def main():
             {"name": "예약 버튼 클릭", "value": f"{reserve_clicks}회", "inline": True},
             {"name": "└ 네이버 예약", "value": f"{naver_clicks}회", "inline": True},
             {"name": "🎯 예약 전환(추정)", "value": conv_text, "inline": False},
+            {"name": "🤝 파트너 샵 예약", "value": partner_text, "inline": False},
             {"name": "📍 지역별 예약클릭", "value": region_text, "inline": True},
             {"name": "진입 키워드", "value": src_text, "inline": True},
         ],

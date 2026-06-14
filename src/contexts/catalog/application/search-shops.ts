@@ -22,6 +22,11 @@ export function makeSearchByGus(repo: ShopRepository) {
   return (gus: string[], limit?: number): Promise<ShopSummary[]> => repo.byGus(gus, limit);
 }
 
+/** 샥 파트너 전체 */
+export function makeGetPartners(repo: ShopRepository) {
+  return (limit?: number): Promise<ShopSummary[]> => repo.partners(limit);
+}
+
 /** 이름 검색 (서버측) */
 export function makeSearchByName(repo: ShopRepository) {
   return (query: string): Promise<ShopSummary[]> => repo.searchByName(query);
