@@ -30,6 +30,16 @@ function eventPinDataUrl(): string {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
+// 오늘 예약 가능 — 초록 물방울 핀 (당일 예약 가능 = 당장 갈 수 있음)
+function todayPinDataUrl(): string {
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="31" viewBox="0 0 24 31">` +
+    `<path d="M12 0C5.4 0 0 5.4 0 12c0 8.4 12 19 12 19s12-10.6 12-19C24 5.4 18.6 0 12 0z" fill="#16a34a" stroke="#fff" stroke-width="2"/>` +
+    `<path d="M7 12l3.2 3.2L17 8.5" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>` +
+    `</svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
 // 샥 파트너(파일럿) — 골드 별 핀(가장 크고 눈에 띔, 클러스터에서 제외돼 항상 보임)
 function partnerPinDataUrl(): string {
   const svg =
@@ -98,6 +108,7 @@ export function MapView({ shops, highlightedId, center, myPos, onPinClick, onBou
     }
     if (!imagesRef.current["__event__"]) imagesRef.current["__event__"] = new kakao.maps.MarkerImage(eventPinDataUrl(), new kakao.maps.Size(24, 31));
     if (!imagesRef.current["__partner__"]) imagesRef.current["__partner__"] = new kakao.maps.MarkerImage(partnerPinDataUrl(), new kakao.maps.Size(30, 40));
+    if (!imagesRef.current["__today__"]) imagesRef.current["__today__"] = new kakao.maps.MarkerImage(todayPinDataUrl(), new kakao.maps.Size(24, 31));
 
     const clusterStyle = (size: number, bg: string) => ({
       width: `${size}px`, height: `${size}px`, background: bg, borderRadius: `${size / 2}px`,
@@ -133,6 +144,7 @@ export function MapView({ shops, highlightedId, center, myPos, onPinClick, onBou
     const fallback = images["네일"];
     const eventImage = images["__event__"];
     const partnerImage = images["__partner__"];
+    const todayImage = images["__today__"];
     const byId = markersById.current;
     const pById = partnerById.current;
 
@@ -182,10 +194,11 @@ export function MapView({ shops, highlightedId, center, myPos, onPinClick, onBou
       const markers = slice.map((s) => {
         const marker = new kakao.maps.Marker({
           position: new kakao.maps.LatLng(s.coord.lat, s.coord.lng),
-          image: s.hasEvent ? eventImage : images[s.category] || fallback,
+          image: s.todayOpen ? todayImage : s.hasEvent ? eventImage : images[s.category] || fallback,
           title: s.name,
         });
-        if (s.hasEvent) marker.setZIndex(6);
+        if (s.todayOpen) marker.setZIndex(7); // 오늘 가능(초록) 최상위
+        else if (s.hasEvent) marker.setZIndex(6); // 할인핀
         kakao.maps.event.addListener(marker, "click", () => onClickRef.current(s));
         byId[s.id] = marker;
         return marker;

@@ -101,10 +101,27 @@ export default function App() {
 
   // 첫 진입: 내 위치로 지도 이동 (그 영역 샵은 지도 idle 시 자동 로드)
   useEffect(() => {
+    // 1) 마지막 위치 즉시 복원 → 재방문 일관성 + 서울시청 깜빡임 방지
+    try {
+      const saved = localStorage.getItem("syak_last_pos");
+      if (saved) {
+        const p = JSON.parse(saved) as Coordinate;
+        setMyPos(p);
+        setMapCenter(p);
+      }
+    } catch {
+      /* ignore */
+    }
+    // 2) 실제 위치로 갱신 + 저장
     getUserPosition().then((pos) => {
       if (pos) {
         setMyPos(pos);
         setMapCenter(pos);
+        try {
+          localStorage.setItem("syak_last_pos", JSON.stringify(pos));
+        } catch {
+          /* ignore */
+        }
       }
     });
   }, []);

@@ -47,7 +47,8 @@ function browserPosition(timeoutMs: number): Promise<Coordinate | null> {
         clearTimeout(timer);
         finish(null);
       },
-      { enableHighAccuracy: true, timeout: timeoutMs },
+      // 지도 센터용이라 도시 수준이면 충분 → highAccuracy=false(빠르고 안정적) + 캐시 위치 허용
+      { enableHighAccuracy: false, timeout: timeoutMs, maximumAge: 600000 },
     );
   });
 }

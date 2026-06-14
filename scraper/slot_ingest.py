@@ -198,6 +198,9 @@ def main():
         inserted += len(rows[i:i+500])
     print(f"✅ Supabase 저장: {inserted}행 ({start_ymd}~{end_ymd})")
 
+    # 오늘 빈자리 있는 샵 (지도 초록핀용)
+    today_shops = {r["shop_id"] for r in rows if r["slot_date"] == start_ymd}
+
     # 상세용 item별 "내일" 빈 시간 요약 → shops.slot_summary 벌크 업서트
     # 같은 이름(디자이너/메뉴)끼리 시간 합치고, 자리 많은 순 top6 · item당 시간 top12
     summary = {}  # shop_id → {name: set(times)}
@@ -212,7 +215,7 @@ def main():
         by_name = summary.get(sid, {})
         items = sorted(({"name": n, "times": sorted(ts)[:12]} for n, ts in by_name.items()),
                        key=lambda x: -len(x["times"]))[:6]
-        sum_rows.append({"id": sid, "slot_summary": items})
+        sum_rows.append({"id": sid, "slot_summary": items, "today_open": sid in today_shops})
     up = 0
     for i in range(0, len(sum_rows), 500):
         sb("POST", "shops", body=sum_rows[i:i+500], prefer="return=minimal,resolution=merge-duplicates")

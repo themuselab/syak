@@ -29,6 +29,7 @@ export interface ShopPin {
   hasEvent: boolean; // 할인/이벤트 중 → 지도 특별핀
   eventPrice: string | null; // 핀 배지 라벨 ("50% 할인", "29,000원~")
   isPartner: boolean; // 샥 파트너(파일럿) → 지도 골드핀 + 클러스터 제외 + 리스트 상단
+  todayOpen: boolean; // 오늘 빈자리 있음 → 지도 초록핀 (당일 예약 가능)
 }
 
 /** 리스트/지도 카드에 쓰는 요약 */
@@ -50,6 +51,7 @@ export interface ShopSummary {
   eventPrice: string | null; // 추출 라벨 ("50% 할인", "29,000원~")
   isPartner: boolean; // 샥 파트너(파일럿) → 리스트 상단 + 배지
   pilotCoupon: string | null; // 파일럿 샵 전용 이벤트/할인 문구(수동, 사장님 기존 할인 등)
+  todayOpen: boolean; // 오늘 빈자리 있음 (당일 예약 가능)
   reservable: boolean;
   services: string[]; // 시술 태그(젤네일/패디/속눈썹…) — 예약 item에서 추출
 }

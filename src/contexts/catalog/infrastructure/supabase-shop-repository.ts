@@ -5,7 +5,7 @@ import type { ShopSummary, ShopDetail, ShopPin } from "../domain/shop";
 import { sbFetch } from "../../../shared/platform/supabase";
 
 const SUMMARY_COLS =
-  "id,name,category,categories,gu,lat,lng,representative_image,review_count,price_tier,min_price,first_visit_deal,has_event,reservable,services,event_desc,event_price,is_partner,pilot_coupon";
+  "id,name,category,categories,gu,lat,lng,representative_image,review_count,price_tier,min_price,first_visit_deal,has_event,reservable,services,event_desc,event_price,is_partner,pilot_coupon,today_open";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function toSummary(r: any): ShopSummary {
@@ -26,6 +26,7 @@ function toSummary(r: any): ShopSummary {
     eventPrice: r.event_price ?? null,
     isPartner: !!r.is_partner,
     pilotCoupon: r.pilot_coupon ?? null,
+    todayOpen: !!r.today_open,
     reservable: r.reservable,
     services: r.services ?? [],
   };
@@ -65,7 +66,7 @@ export class SupabaseShopRepository implements ShopRepository {
   async pinsInBounds(b: Bounds, limit = 5000): Promise<ShopPin[]> {
     // 마커에 필요한 최소 컬럼만 → 1핀 ~70B (요약의 1/6)
     const q =
-      `shops?select=id,name,category,gu,lat,lng,event_desc,event_price,is_partner` +
+      `shops?select=id,name,category,gu,lat,lng,event_desc,event_price,is_partner,today_open` +
       `&lat=gte.${b.swLat}&lat=lte.${b.neLat}&lng=gte.${b.swLng}&lng=lte.${b.neLng}` +
       `&order=review_count.desc&limit=${limit}`;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -78,6 +79,7 @@ export class SupabaseShopRepository implements ShopRepository {
       hasEvent: !!r.event_desc,
       eventPrice: r.event_price ?? null,
       isPartner: !!r.is_partner,
+      todayOpen: !!r.today_open,
     }));
   }
 
@@ -130,6 +132,7 @@ export class SupabaseShopRepository implements ShopRepository {
           isPartner: !!row.is_partner,
           pilotCoupon: row.pilot_coupon ?? null,
           pilotHours: row.pilot_hours ?? null,
+          todayOpen: !!row.today_open,
         };
       }
     }
