@@ -32,3 +32,10 @@ yarn-error.log*
 *.ait
 
 public/data/
+
+# 스크래퍼 캐시·런타임 산출물
+scraper/__pycache__/
+**/__pycache__/
+*.pyc
+scraper/events_cache.json
+scraper/*.log
