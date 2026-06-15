@@ -22,7 +22,6 @@ async function bootstrap() {
         </Provider>
       );
     } catch (e) {
-      // eslint-disable-next-line no-console
       console.warn("[shak] TDS Provider load failed:", e);
     }
   }

@@ -2,7 +2,7 @@
 // 나머지 코드는 포트(인터페이스)에만 의존한다. 어댑터 교체는 여기 한 곳만 바꾸면 된다.
 
 import { SupabaseShopRepository } from "../contexts/catalog/infrastructure/supabase-shop-repository";
-import { makeSearchInBounds, makePinsInBounds, makeSearchByGu, makeSearchByGus, makeGetPartners, makeSearchByName } from "../contexts/catalog/application/search-shops";
+import { makeSearchInBounds, makePinsInBounds, makeSearchByGus, makeGetPartners, makeSearchByName } from "../contexts/catalog/application/search-shops";
 import { makeGetShopDetail } from "../contexts/catalog/application/get-shop-detail";
 
 import { SupabaseAnalyticsSink } from "../contexts/analytics/infrastructure/supabase-analytics-sink";
@@ -27,7 +27,6 @@ export const usecases = {
   catalog: {
     inBounds: makeSearchInBounds(shopRepo),
     pinsInBounds: makePinsInBounds(shopRepo),
-    byGu: makeSearchByGu(shopRepo),
     byGus: makeSearchByGus(shopRepo),
     partners: makeGetPartners(shopRepo),
     searchByName: makeSearchByName(shopRepo),

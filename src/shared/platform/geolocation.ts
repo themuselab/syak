@@ -8,10 +8,13 @@ const IS_AIT = import.meta.env.VITE_TARGET !== "vercel";
 // 토스 앱: SDK의 getCurrentLocation 브릿지 (권한 거부 시 throw → null).
 async function aitPosition(): Promise<Coordinate | null> {
   try {
-    const mod: any = await import("@apps-in-toss/web-framework");
-    const getLoc = mod?.getCurrentLocation;
+    // SDK 모듈 형태가 버전마다 달라 느슨하게 접근(브릿지 함수 존재만 확인).
+    const mod = (await import("@apps-in-toss/web-framework")) as Record<string, unknown>;
+    const getLoc = mod?.getCurrentLocation as
+      | ((opts: { accuracy: number }) => Promise<{ coords?: { latitude: number; longitude: number } } & { latitude?: number; longitude?: number }>)
+      | undefined;
     if (typeof getLoc !== "function") return null;
-    const accuracy = mod?.Accuracy?.Balanced ?? 3; // 수백 m 이내면 충분 (지도 센터용)
+    const accuracy = (mod?.Accuracy as { Balanced?: number } | undefined)?.Balanced ?? 3; // 수백 m 이내면 충분 (지도 센터용)
     const res = await getLoc({ accuracy });
     const c = res?.coords ?? res;
     if (c && typeof c.latitude === "number" && typeof c.longitude === "number") {

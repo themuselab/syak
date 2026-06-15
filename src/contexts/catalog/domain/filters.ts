@@ -1,4 +1,4 @@
-// Catalog 도메인 — 필터/정렬/컬렉션 규칙. 순수 함수만.
+// Catalog 도메인 — 필터/정렬 규칙. 순수 함수만.
 
 import type { ShopSummary, PriceTier } from "./shop";
 import type { Category } from "../../../shared/domain/category";
@@ -20,8 +20,7 @@ export interface FilterCriteria {
   reservableOnly?: boolean;
   hasEventOnly?: boolean;
   firstVisitOnly?: boolean;
-  partnerOnly?: boolean; // 샥 파트너 가게만
-  sortBy?: SortKey; // 리스트 정렬 기준 (미지정 = recommend)
+  sortBy?: SortKey; // 리스트 정렬 기준 (미지정 = recommend). "partner"=샥 파트너만
 }
 
 export function matchesFilter(shop: ShopSummary, c: FilterCriteria): boolean {
@@ -32,31 +31,5 @@ export function matchesFilter(shop: ShopSummary, c: FilterCriteria): boolean {
   if (c.reservableOnly && !shop.reservable) return false;
   if (c.hasEventOnly && !shop.hasEvent) return false;
   if (c.firstVisitOnly && !shop.firstVisitDeal) return false;
-  if (c.partnerOnly && !shop.isPartner) return false;
   return true;
-}
-
-export function applyFilter(shops: ShopSummary[], c: FilterCriteria): ShopSummary[] {
-  return shops.filter((s) => matchesFilter(s, c));
-}
-
-// ── 컬렉션(가로 스크롤 큐레이션) 규칙 ──────────────────────
-
-export type CollectionKey = "event" | "price1" | "price2" | "firstVisit" | "manyReviews";
-
-export interface Collection {
-  key: CollectionKey;
-  title: string;
-  shops: ShopSummary[];
-}
-
-export function buildCollections(shops: ShopSummary[]): Collection[] {
-  const byReviews = (a: ShopSummary, b: ShopSummary) => b.reviewCount - a.reviewCount;
-  return [
-    { key: "event", title: "이벤트 · 할인", shops: shops.filter((s) => s.hasEvent).sort(byReviews) },
-    { key: "firstVisit", title: "첫방문 특가", shops: shops.filter((s) => s.firstVisitDeal).sort(byReviews) },
-    { key: "price1", title: "1만원대", shops: shops.filter((s) => s.priceTier === "1만원대").sort(byReviews) },
-    { key: "price2", title: "2만원대", shops: shops.filter((s) => s.priceTier === "2만원대").sort(byReviews) },
-    { key: "manyReviews", title: "리뷰 많은 샵", shops: [...shops].sort(byReviews) },
-  ].map((c) => ({ ...c, shops: c.shops.slice(0, 12) }));
 }

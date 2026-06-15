@@ -2,10 +2,6 @@
 export const CATEGORIES = ["네일", "헤어", "속눈썹", "왁싱", "반영구", "피부", "마사지", "태닝"] as const;
 export type Category = (typeof CATEGORIES)[number];
 
-export function isCategory(v: string): v is Category {
-  return (CATEGORIES as readonly string[]).includes(v);
-}
-
 // 서울 25개 자치구
 export const SEOUL_GU = [
   "강남구", "강동구", "강북구", "강서구", "관악구", "광진구", "구로구", "금천구",

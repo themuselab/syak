@@ -12,11 +12,6 @@ export function makePinsInBounds(repo: ShopRepository) {
   return (b: Bounds, limit?: number) => repo.pinsInBounds(b, limit);
 }
 
-/** 지역(구/시) 선택 */
-export function makeSearchByGu(repo: ShopRepository) {
-  return (gu: string, limit?: number): Promise<ShopSummary[]> => repo.byGu(gu, limit);
-}
-
 /** 여러 지역 동시 선택(합집합) */
 export function makeSearchByGus(repo: ShopRepository) {
   return (gus: string[], limit?: number): Promise<ShopSummary[]> => repo.byGus(gus, limit);

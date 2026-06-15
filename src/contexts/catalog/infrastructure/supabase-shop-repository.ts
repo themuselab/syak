@@ -51,18 +51,6 @@ export class SupabaseShopRepository implements ShopRepository {
     return (await this.rows(q)).map(toSummary);
   }
 
-  async byIds(ids: string[]): Promise<ShopSummary[]> {
-    if (!ids.length) return [];
-    const out: ShopSummary[] = [];
-    // URL 길이 보호: 300개씩 끊어서 in.()
-    for (let i = 0; i < ids.length; i += 300) {
-      const chunk = ids.slice(i, i + 300).map((x) => encodeURIComponent(x)).join(",");
-      const q = `shops?select=${SUMMARY_COLS}&id=in.(${chunk})`;
-      out.push(...(await this.rows(q)).map(toSummary));
-    }
-    return out;
-  }
-
   async pinsInBounds(b: Bounds, limit = 5000): Promise<ShopPin[]> {
     // 마커에 필요한 최소 컬럼만 → 1핀 ~70B (요약의 1/6)
     const q =
@@ -111,7 +99,7 @@ export class SupabaseShopRepository implements ShopRepository {
 
   async byId(id: string): Promise<ShopDetail | null> {
     if (this.detailCache.has(id)) return this.detailCache.get(id)!;
-    const res = await sbFetch(`shops?id=eq.${encodeURIComponent(id)}&select=detail,services,item_ids,slot_summary,event_desc,event_price,biz_id,biz_type,is_partner,pilot_coupon,pilot_hours`);
+    const res = await sbFetch(`shops?id=eq.${encodeURIComponent(id)}&select=detail,services,event_desc,event_price,biz_id,biz_type,is_partner,pilot_coupon,pilot_hours`);
     let detail: ShopDetail | null = null;
     if (res.ok || res.status === 206) {
       const rows = await res.json();
@@ -124,13 +112,11 @@ export class SupabaseShopRepository implements ShopRepository {
           const url = `https://m.booking.naver.com/booking/${row.biz_type ?? 13}/bizes/${row.biz_id}`;
           routes = [{ type: "naver", label: "네이버 예약", value: url }, ...routes];
         }
-        // detail jsonb엔 services/staffCount/slotSummary/event가 없음 → 컬럼에서 합쳐줌
+        // detail jsonb엔 services/event/partner가 없음 → 컬럼에서 합쳐줌
         detail = {
           ...(row.detail as ShopDetail),
           reservationRoutes: routes,
           services: row.services ?? row.detail.services ?? [],
-          staffCount: Array.isArray(row.item_ids) ? row.item_ids.length : 0,
-          slotSummary: Array.isArray(row.slot_summary) ? row.slot_summary : [],
           hasEvent: !!row.event_desc,
           eventDesc: row.event_desc ?? null,
           eventPrice: row.event_price ?? null,

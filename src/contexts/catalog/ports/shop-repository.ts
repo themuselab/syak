@@ -13,8 +13,6 @@ export interface ShopRepository {
   inBounds(b: Bounds, limit?: number): Promise<ShopSummary[]>;
   /** 지도 영역 안의 경량 핀 — 지도 마커용. 대량 상한(밀집도). */
   pinsInBounds(b: Bounds, limit?: number): Promise<ShopPin[]>;
-  /** id 목록으로 조회 (맞춤찾기: 그 시간 빈 샵들) */
-  byIds(ids: string[]): Promise<ShopSummary[]>;
   /** 지역(구/시) 선택 시 그 지역 샵 (인기순 상한) */
   byGu(gu: string, limit?: number): Promise<ShopSummary[]>;
   /** 여러 지역 동시 선택(합집합) */

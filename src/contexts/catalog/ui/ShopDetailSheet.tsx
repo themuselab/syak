@@ -303,7 +303,7 @@ function Gallery({ images }: { images: string[] }) {
           {shown.map((src, i) => (
             <img
               key={i}
-              src={thumbW(src, 700)}
+              src={thumbW(src)}
               onError={onImgError}
               alt=""
               loading="lazy"
@@ -324,7 +324,7 @@ function Gallery({ images }: { images: string[] }) {
           {shown.map((src, i) => (
             <img
               key={i}
-              src={thumbW(src, 150)}
+              src={thumbW(src)}
               onError={onImgError}
               alt=""
               loading="lazy"

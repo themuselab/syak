@@ -73,8 +73,6 @@ export interface Review {
 /** 상세 화면용 (요약 + 풍부한 정보) */
 export interface ShopDetail extends ShopSummary {
   roadAddress: string | null;
-  hoursText: string | null;
-  conveniences: string[];
   instagram: string | null;
   phone: string | null;
   menus: Menu[];
@@ -82,26 +80,6 @@ export interface ShopDetail extends ShopSummary {
   reservationRoutes: ReservationRoute[];
   reviews: Review[];
   reviewTotal: number;
-  blogReviewTotal: number;
-  staffCount: number; // 예약 item(디자이너/메뉴) 수 — 2 이상이면 슬롯 "합산 기준" 안내
-  slotSummary: { name: string; times: string[] }[]; // 내일 기준 item(디자이너/메뉴)별 빈 시간
   pilotHours: string | null; // 파일럿 샵 빈 시간대 안내 ("주로 평일 낮" 등)
 }
 
-// ── 도메인 규칙 (순수 함수) ───────────────────────────────
-
-export function priceTierOf(minPrice: number | null): PriceTier {
-  if (minPrice == null) return "미정";
-  if (minPrice < 20000) return "1만원대";
-  if (minPrice < 30000) return "2만원대";
-  if (minPrice < 40000) return "3만원대";
-  return "4만원이상";
-}
-
-export function isInDistrict(shop: ShopSummary, gu: string): boolean {
-  return shop.gu === gu;
-}
-
-export function hasCategory(shop: ShopSummary, category: Category): boolean {
-  return shop.categories.includes(category);
-}

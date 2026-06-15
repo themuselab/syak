@@ -1,6 +1,6 @@
 export type ChipKey = "event" | "price1" | "price2" | "firstVisit" | "reviews";
 
-export const CHIPS: { key: ChipKey; label: string }[] = [
+const CHIPS: { key: ChipKey; label: string }[] = [
   { key: "event", label: "할인·이벤트" },
   { key: "price2", label: "2만원대" },
   { key: "price1", label: "1만원대" },

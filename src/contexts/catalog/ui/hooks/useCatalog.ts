@@ -37,27 +37,10 @@ export function useCatalog() {
     setLoading(false);
   }, []);
 
-  // 지역(구/시) 선택 → 그 지역 샵 로드. 호출측에서 중심 계산하라고 결과 반환.
-  const loadGu = useCallback(async (gu: string): Promise<ShopSummary[]> => {
-    setLoading(true);
-    try {
-      const s = await usecases.catalog.byGu(gu);
-      setLoaded(s);
-      setPins(s);
-      setError(null);
-      return s;
-    } catch (e) {
-      setError(String(e));
-      return [];
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   const searchByName = useCallback((q: string) => usecases.catalog.searchByName(q), []);
 
   // 필터(분야/가격/시술/혜택) 적용 — 로드된 셋 안에서 클라이언트 필터
   const shops = useMemo(() => loaded.filter((s) => matchesFilter(s, filter)), [loaded, filter]);
 
-  return { shops, loaded, pins, loading, error, filter, setFilter, loadBounds, loadGu, showShops, searchByName };
+  return { shops, pins, loading, error, filter, setFilter, loadBounds, showShops, searchByName };
 }
