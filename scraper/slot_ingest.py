@@ -218,10 +218,7 @@ def main():
         sb("POST", "shops", body=sum_rows[i:i+500], prefer="return=minimal,resolution=merge-duplicates")
         up += len(sum_rows[i:i+500])
     print(f"✅ slot_summary 갱신: {up}곳")
-
-    # 초록핀(today_open) 전샵 재계산 — 영속 slots 테이블 + 현재시각 기준.
-    # 수집 성공/샤드와 무관하게 '지금 이후 오늘 슬롯이 실재하는 샵'만 true.
-    reconcile_today_open(start_ymd, datetime.now(kst).strftime("%H:%M:%S"))
+    # 초록핀(today_open)은 별도 가벼운 잡(today-open.yml)이 재계산 — 무거운 수집과 분리(타임아웃 방지)
 
 
 def reconcile_today_open(start_ymd, now_hms):
@@ -271,5 +268,15 @@ def reconcile_today_open(start_ymd, now_hms):
     print(f"🟢 today_open 재계산: 열림 {len(true_open)}곳 (+{len(to_true)} / -{len(to_false)})")
 
 
+def reconcile_main():
+    """초록핀만 재계산하는 경량 진입점(today-open.yml용). 네이버 호출 없음 — Supabase만."""
+    kst = timezone(timedelta(hours=9))
+    now = datetime.now(kst)
+    reconcile_today_open(now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"))
+
+
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 1 and sys.argv[1] == "reconcile":
+        reconcile_main()
+    else:
+        main()
