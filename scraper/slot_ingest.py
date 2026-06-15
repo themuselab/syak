@@ -198,11 +198,6 @@ def main():
         inserted += len(rows[i:i+500])
     print(f"✅ Supabase 저장: {inserted}행 ({start_ymd}~{end_ymd})")
 
-    # 오늘 "지금 시간 이후" 빈자리 있는 샵 (지도 초록핀용) — 지난 시간 슬롯은 제외
-    now_hms = datetime.now(kst).strftime("%H:%M:%S")
-    today_shops = {r["shop_id"] for r in rows
-                   if r["slot_date"] == start_ymd and r["start_time"] >= now_hms}
-
     # 상세용 item별 "내일" 빈 시간 요약 → shops.slot_summary 벌크 업서트
     # 같은 이름(디자이너/메뉴)끼리 시간 합치고, 자리 많은 순 top6 · item당 시간 top12
     summary = {}  # shop_id → {name: set(times)}
@@ -217,12 +212,63 @@ def main():
         by_name = summary.get(sid, {})
         items = sorted(({"name": n, "times": sorted(ts)[:12]} for n, ts in by_name.items()),
                        key=lambda x: -len(x["times"]))[:6]
-        sum_rows.append({"id": sid, "slot_summary": items, "today_open": sid in today_shops})
+        sum_rows.append({"id": sid, "slot_summary": items})
     up = 0
     for i in range(0, len(sum_rows), 500):
         sb("POST", "shops", body=sum_rows[i:i+500], prefer="return=minimal,resolution=merge-duplicates")
         up += len(sum_rows[i:i+500])
     print(f"✅ slot_summary 갱신: {up}곳")
+
+    # 초록핀(today_open) 전샵 재계산 — 영속 slots 테이블 + 현재시각 기준.
+    # 수집 성공/샤드와 무관하게 '지금 이후 오늘 슬롯이 실재하는 샵'만 true.
+    reconcile_today_open(start_ymd, datetime.now(kst).strftime("%H:%M:%S"))
+
+
+def reconcile_today_open(start_ymd, now_hms):
+    """차단·교차일로 생긴 묵은 초록핀(거짓양성/음성)을 제거.
+    수집 시각이 아니라 '지금'을 기준으로 slots 테이블을 다시 읽어 델타만 PATCH."""
+    def get_rows(path):
+        _, _, body = sb("GET", path)
+        return json.loads(body)
+
+    # 1) 지금 기준 실제로 열린 샵 (오늘 + start_time>=지금) distinct — keyset 페이지네이션
+    true_open, last = set(), -1
+    while True:
+        rows = get_rows(f"slots?slot_date=eq.{start_ymd}&start_time=gte.{now_hms}"
+                        f"&shop_id=gt.{last}&select=shop_id&order=shop_id&limit=1000")
+        if not rows:
+            break
+        for r in rows:
+            true_open.add(r["shop_id"])
+        last = rows[-1]["shop_id"]
+        if len(rows) < 1000:
+            break
+
+    # 2) 현재 DB에서 true로 저장된 샵
+    stored, frm = set(), 0
+    while True:
+        _, _, body = sb("GET", "shops?today_open=eq.true&select=id&order=id",
+                        extra_headers={"Range": f"{frm}-{frm+999}"})
+        rows = json.loads(body)
+        if not rows:
+            break
+        for r in rows:
+            stored.add(r["id"])
+        frm += 1000
+        if len(rows) < 1000:
+            break
+
+    # 3) 바뀐 것만 PATCH (대부분 그대로 → 쓰기 최소화)
+    to_true, to_false = list(true_open - stored), list(stored - true_open)
+
+    def patch(ids, val):
+        for i in range(0, len(ids), 200):
+            chunk = ",".join(str(x) for x in ids[i:i+200])
+            sb("PATCH", f"shops?id=in.({chunk})", body={"today_open": val}, prefer="return=minimal")
+
+    patch(to_true, True)
+    patch(to_false, False)
+    print(f"🟢 today_open 재계산: 열림 {len(true_open)}곳 (+{len(to_true)} / -{len(to_false)})")
 
 
 if __name__ == "__main__":
