@@ -1,9 +1,9 @@
 # 샥 (syak) 2.0
 
-> 서울 뷰티샵 디스커버리 — Apps-in-Toss 미니앱.
-> 지도에서 내 주변 뷰티샵(네일·헤어·속눈썹·왁싱·반영구·피부·마사지·태닝)을 둘러보고, 바로 예약 루트로 연결한다.
+> 전국 뷰티샵 디스커버리 — 웹(themuselab.kr) + Apps-in-Toss 미니앱 (동일 코드 dual-build).
+> 지도에서 내 주변 뷰티샵(네일·헤어·속눈썹·왁싱·반영구·피부·마사지·태닝)을 둘러보고, **오늘 당장 예약 가능한 빈자리**를 찾아 바로 네이버 예약으로 연결한다.
 
-네이버 플레이스에서 수집한 **서울 뷰티샵 7,635곳**의 위치·사진·영업시간·메뉴·가격·리뷰·인스타·예약 정보를 지도와 컬렉션으로 보여준다.
+네이버 플레이스에서 수집한 **전국 뷰티샵 4만+곳**의 위치·사진·메뉴·가격·리뷰·예약 정보 + **실시간 빈자리(슬롯)**를 지도로 보여준다. 데이터는 Supabase에 적재하고 앱은 지도 영역(뷰포트) 기준으로 조회한다.
 
 ---
 
@@ -28,7 +28,7 @@ src/
 │  ├─ catalog/            # 🔵 샵 탐색·필터·상세·컬렉션 (읽기측, Query)
 │  ├─ analytics/          # 🟢 클릭/노출 이벤트 (쓰기 + 읽기)
 │  ├─ lead/               # 🟡 취소석 전화번호 등록 (쓰기)
-│  └─ reservation/        # ⛔ 예약/슬롯 — 포트만, 구현은 추후 AWS 백엔드
+│  └─ reservation/        # 🔵 예약/슬롯 조회 — Supabase slots(빈자리) provider
 ├─ shared/                # 공통 커널 (값객체·플랫폼 어댑터·공통 UI)
 └─ app/                   # 조립(composition-root) + 라우팅
 ```
@@ -48,24 +48,29 @@ ui → application → domain
 - `infrastructure/` — 어댑터. 외부 의존(fetch/JSON/SDK)은 **여기만**.
 - 조립은 [`src/app/composition-root.ts`](./src/app/composition-root.ts) 한 곳에서 포트↔어댑터를 연결.
 
-> **예약/슬롯 도메인은 지금 포트만 있다.** 앱은 실시간으로 네이버를 호출하지 않는다. 추후 AWS 백엔드가
-> 매일 00시 배치로 다음날 슬롯을 미리 계산해 저장하면, `SlotProvider` 어댑터 하나를 주입하는 것으로 붙는다.
+> **예약/슬롯은 `SlotProvider` 포트 + Supabase 어댑터로 구현돼 있다.** 앱은 실시간으로 네이버를 호출하지 않고,
+> GitHub Actions 배치가 미리 채워둔 `slots` 테이블(오늘~3일치 빈자리)만 읽는다.
 
-## 데이터 (read model)
+## 데이터 (read model — Supabase)
 
-앱은 외부 API를 실시간 호출하지 않고, 미리 만들어진 **정적 read model**만 읽는다 (CQRS 읽기측).
+앱은 외부 API를 실시간 호출하지 않고, 데이터 파이프라인이 미리 적재한 **Supabase read model**만 읽는다 (CQRS 읽기측).
 
-- `public/data/shops.summary.json` — 전체 요약(지도/리스트/컬렉션용)
-- `public/data/details/<id>.json` — 가게별 상세(상세 진입 시 지연 로딩)
+- `shops` — 가게 요약/상세(jsonb) + 파생필드(가격대·이벤트·파트너·오늘빈자리 `today_open`)
+- `slots` — 오늘~3일치 빈자리 (shop_id, date, time)
+- `events` / `leads` — 클릭 이벤트 / 취소석 등록 (쓰기측)
 
-read model은 원본 상세 데이터에서 파생필드(가격대·첫방문할인·이벤트·예약루트)를 계산해 생성한다:
+앱은 지도 영역(뷰포트) 기준으로 핀/요약을 조회하고(egress 절약), 상세는 진입 시 지연 로딩한다.
 
-```bash
-python tools/build_read_model.py   # 원본 상세 JSON → public/data/*
-```
+### 데이터 파이프라인 (GitHub Actions, `scraper/`)
 
-> 원본 수집 데이터(`seoul_shops_detailed.json`)는 용량이 커 이 레포에 포함하지 않는다.
-> read model 산출물만 커밋되어 있어 그대로 빌드/배포된다.
+| 워크플로 | 주기 | 역할 |
+|---|---|---|
+| `slot-ingest` | 매시 :00/:30 (2분할) | 네이버 빈자리 → `slots` + `today_open` 갱신 |
+| `event-ingest` | 매일 (4분할) | 할인/이벤트 텍스트 수집 |
+| `partner-sync` | 매시 :15 | `is_partner` 켜진 샵 사진·가격 재수집(Playwright) |
+| `report` | 08:00 | 검증 리포트 → Discord |
+
+> 전국 수집/가공 스크립트는 별도 레포(`muse/syak/`)에 있다. 원본 대용량 수집 데이터는 레포에 포함하지 않는다.
 
 ## 개발
 
@@ -92,7 +97,9 @@ npm run build        # 앱인토스 빌드 (ait build)
 
 ## 로드맵
 
-- [ ] 예약/슬롯 도메인 — AWS 백엔드(매일 00시 배치) + `SlotProvider` 어댑터, "맞춤 시간 찾기" 활성화
-- [ ] details read model 샤딩(7,635 파일 → 버킷)으로 경량화
-- [ ] TDS(토스 디자인 시스템) 컴포넌트로 UI 정식화
-- [ ] 파트너 샵 강조 레이어
+- [x] 예약/슬롯 — GitHub Actions 배치 + Supabase `SlotProvider`, 오늘/내일 빈자리 표시
+- [x] Supabase 뷰포트 기반 조회 (정적 JSON → DB 이전, 전국 4만곳)
+- [x] 파트너 샵 강조(골드핀·상단·전용 혜택) + 오늘 예약 가능(초록핀)
+- [ ] 원장님 대시보드(웹) — 가게별 유입/예약클릭
+- [ ] Capacitor 네이티브 + 위치기반 푸시 알림
+- [ ] 빈자리 → 손님 매칭 자동화(원클릭 노출)

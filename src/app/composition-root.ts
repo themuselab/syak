@@ -16,8 +16,7 @@ import { makeFindOpenShops } from "../contexts/reservation/application/find-open
 import { makeGetShopSlots } from "../contexts/reservation/application/get-shop-slots";
 
 // ── 어댑터 인스턴스화 (구현 선택) ─────────────────────────
-// 카탈로그: Supabase에서 조회 (정적 JSON에서 DB로 이전).
-// JSON으로 되돌리려면 StaticShopRepository로 교체만 하면 됨.
+// 카탈로그: Supabase(PostgREST)에서 뷰포트 기반 조회. 다른 구현은 ShopRepository 포트만 맞추면 교체 가능.
 const shopRepo = new SupabaseShopRepository();
 const analyticsSink = new SupabaseAnalyticsSink("toss");
 const leadRepo = new SupabaseLeadRepository();

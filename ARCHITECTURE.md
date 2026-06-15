@@ -12,7 +12,7 @@
 | `catalog` | 샵 탐색·필터·상세·컬렉션 | 읽기(Query) |
 | `analytics` | 클릭/노출 이벤트 적재·집계 | 쓰기+읽기 |
 | `lead` | 취소석 알림 전화번호 등록 | 쓰기 |
-| `reservation` | 예약/슬롯 조회 | ⛔ 지금은 **포트만**, 구현은 추후 AWS |
+| `reservation` | 예약/슬롯(빈자리) 조회 | 🔵 Supabase `slots` provider 구현 |
 
 ## 2. 레이어 & 의존성 방향 (안쪽이 바깥을 모른다)
 
@@ -34,8 +34,8 @@ ui  →  application  →  domain
 
 ## 3. 읽기/쓰기 분리 (CQRS-lite)
 
-- **읽기**: 앱은 외부 API를 실시간 호출하지 않는다. 미리 만들어진 **read model**(`public/data/shops.read-model.json`)만 읽는다.
-- **쓰기→읽기 투영**: 데이터 파이프라인(`syak/build_read_model.py`)이 원본 상세JSON에서 파생필드를 계산해 read model을 생성한다. (오프라인 배치)
+- **읽기**: 앱은 외부 API를 실시간 호출하지 않는다. 데이터 파이프라인이 미리 적재한 **Supabase read model**(`shops`/`slots` 테이블)만 뷰포트 기준으로 읽는다.
+- **쓰기→읽기 투영**: GitHub Actions 배치(`scraper/`)가 네이버에서 수집·가공해 파생필드(가격대·이벤트·파트너·`today_open`)와 빈자리(`slots`)를 적재한다. (오프라인 배치)
 - 앱 내부 쓰기(클릭이벤트·전화번호)는 `analytics`/`lead`의 sink 포트로만 나간다.
 
 ## 4. 조립 (composition root)
