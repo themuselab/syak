@@ -1,6 +1,7 @@
-export type ChipKey = "event" | "price1" | "price2" | "firstVisit" | "reviews";
+export type ChipKey = "today" | "event" | "price1" | "price2" | "firstVisit" | "reviews";
 
 const CHIPS: { key: ChipKey; label: string }[] = [
+  { key: "today", label: "오늘 예약 가능" },
   { key: "event", label: "할인·이벤트" },
   { key: "price2", label: "2만원대" },
   { key: "price1", label: "1만원대" },
@@ -27,6 +28,8 @@ export function CollectionChips({ active, onSelect }: Props) {
     >
       {CHIPS.map((c) => {
         const on = active === c.key;
+        // 오늘 예약 토글은 지도 초록핀과 색을 맞춤(초록)
+        const onColor = c.key === "today" ? "#16a34a" : "#ec4899";
         return (
           <button
             key={c.key}
@@ -36,7 +39,7 @@ export function CollectionChips({ active, onSelect }: Props) {
               padding: "9px 15px",
               borderRadius: 20,
               border: "none",
-              background: on ? "#ec4899" : "#f1f1f4",
+              background: on ? onColor : "#f1f1f4",
               color: on ? "#fff" : "#444",
               fontSize: 14,
               fontWeight: 700,

@@ -21,7 +21,8 @@ function applyChip(list: ShopSummary[], chip: ChipKey | null): ShopSummary[] {
   if (!chip) return list;
   if (chip === "reviews") return [...list].sort((a, b) => b.reviewCount - a.reviewCount);
   return list.filter((s) =>
-    chip === "event" ? s.hasEvent
+    chip === "today" ? s.todayOpen
+      : chip === "event" ? s.hasEvent
       : chip === "price1" ? s.priceTier === "1만원대"
       : chip === "price2" ? s.priceTier === "2만원대"
       : chip === "firstVisit" ? s.firstVisitDeal
@@ -205,6 +206,15 @@ export default function App() {
     }
   }
 
+  // 결과 없을 때 전체 초기화 (필터·정렬·칩·맞춤찾기·검색어)
+  function resetAll() {
+    setFilter({});
+    setChip(null);
+    setCustomFind(null);
+    setQuery("");
+    if (lastBounds.current) loadBounds(lastBounds.current);
+  }
+
   function openDetail(shop: ShopPin) {
     setHighlightId(shop.id);
     if (shop.coord?.lat && shop.coord?.lng) setMapCenter({ ...shop.coord });
@@ -275,7 +285,7 @@ export default function App() {
               </button>
             ) : (
               <button onClick={() => setFindOpen(true)} style={pill("dark")}>
-                맞춤 샵 찾기
+                빈자리 찾기
               </button>
             )}
           </div>
@@ -288,7 +298,7 @@ export default function App() {
         {error ? (
           <div style={{ padding: 24, paddingTop: 140, color: "#c00" }}>데이터 로드 실패: {error}</div>
         ) : (
-          <MapView shops={mapShops} highlightedId={highlightId} center={mapCenter} myPos={myPos} onPinClick={onPinClick} onBoundsChanged={onBoundsChanged} />
+          <MapView shops={mapShops} highlightedId={highlightId} center={mapCenter} myPos={myPos} showToday={chip === "today"} onPinClick={onPinClick} onBoundsChanged={onBoundsChanged} />
         )}
       </div>
 
@@ -304,6 +314,15 @@ export default function App() {
       {root && (
         <SnapSheet ref={sheetRef} mountPoint={root} onSnap={(i) => setAtFull(i >= 3)}>
           <div style={{ paddingTop: atFull ? headerH : 0, transition: "padding-top .18s ease" }}>
+          {/* full로 펼쳐졌을 때 — 시트 상단 그랩바 유지(드래그/탭으로 접기, 헤더에 가려도 보이게 sticky) */}
+          {atFull && (
+            <div
+              onClick={() => sheetRef.current?.snapTo(2)}
+              style={{ position: "sticky", top: headerH, zIndex: 6, background: "#fff", padding: "8px 0 7px", cursor: "pointer", borderBottom: "1px solid #ececef" }}
+            >
+              <div style={{ width: 40, height: 4, borderRadius: 2, background: "#d4d4da", margin: "0 auto" }} />
+            </div>
+          )}
           {loading ? (
             <ShopListSkeleton />
           ) : (
@@ -317,7 +336,7 @@ export default function App() {
                 <CollectionChips active={chip} onSelect={setChip} />
               )}
               <div style={{ borderTop: "1px solid #f2f2f4" }} />
-              <ShopListSheet shops={displayed} onShopClick={openDetail} />
+              <ShopListSheet shops={displayed} onShopClick={openDetail} onReset={resetAll} />
             </>
           )}
           </div>

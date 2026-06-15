@@ -15,7 +15,7 @@ type Props = {
   onClose: () => void;
 };
 
-/** 맞춤 샵 찾기 — 날짜/시간 선택. (실시간 슬롯은 예약 도메인=AWS 추후, 지금은 예약가능 샵으로 필터) */
+/** 빈자리 찾기 — 날짜/시간 선택. (실시간 슬롯은 예약 도메인=AWS 추후, 지금은 예약가능 샵으로 필터) */
 export function CustomFindModal({ onApply, onClose }: Props) {
   const today = new Date();
   const dayOptions = Array.from({ length: 7 }, (_, i) => {
@@ -44,7 +44,16 @@ export function CustomFindModal({ onApply, onClose }: Props) {
         onClick={(e) => e.stopPropagation()}
         style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "#fff", borderRadius: "18px 18px 0 0", padding: 22, maxHeight: "80vh", overflowY: "auto" }}
       >
-        <h2 style={{ fontSize: 18, fontWeight: 800, margin: "0 0 4px" }}>맞춤 샵 찾기</h2>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+          <h2 style={{ fontSize: 18, fontWeight: 800, margin: "0 0 4px" }}>빈자리 찾기</h2>
+          <button
+            onClick={onClose}
+            aria-label="닫기"
+            style={{ border: "none", background: "#f2f2f4", color: "#888", width: 30, height: 30, borderRadius: 15, fontSize: 17, lineHeight: 1, cursor: "pointer", flexShrink: 0 }}
+          >
+            ✕
+          </button>
+        </div>
         <p style={{ fontSize: 13, color: "#888", margin: "0 0 18px" }}>원하는 날짜·시간에 예약 가능한 샵을 찾아드려요</p>
 
         <Group title="날짜">

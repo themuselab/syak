@@ -4,15 +4,24 @@ import { ShopCard } from "./ShopCard";
 type Props = {
   shops: ShopSummary[];
   onShopClick: (s: ShopSummary) => void;
+  onReset?: () => void;
 };
 
 /** 샵 리스트 (시트 본문). */
-export function ShopListSheet({ shops, onShopClick }: Props) {
+export function ShopListSheet({ shops, onShopClick, onReset }: Props) {
   if (shops.length === 0) {
     return (
-      <div style={{ padding: "48px 24px", textAlign: "center", color: "#999" }}>
+      <div style={{ padding: "44px 24px 48px", textAlign: "center", color: "#999" }}>
         <div style={{ fontSize: 14 }}>조건에 맞는 샵이 없어요</div>
         <div style={{ fontSize: 12, color: "#bbb", marginTop: 4 }}>지역·필터·검색어를 바꿔보세요</div>
+        {onReset && (
+          <button
+            onClick={onReset}
+            style={{ marginTop: 16, padding: "10px 20px", borderRadius: 22, border: "1.5px solid #ec4899", background: "#fff", color: "#ec4899", fontSize: 14, fontWeight: 700 }}
+          >
+            필터 초기화
+          </button>
+        )}
       </div>
     );
   }

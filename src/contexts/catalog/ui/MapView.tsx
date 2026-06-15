@@ -61,11 +61,12 @@ type Props = {
   highlightedId?: string;
   center?: Coordinate;
   myPos?: Coordinate | null;
+  showToday?: boolean; // '오늘 예약' 토글 ON일 때만 초록핀, 평소엔 기본(핑크) 핀
   onPinClick: (shop: ShopPin) => void;
   onBoundsChanged?: (b: Bounds) => void;
 };
 
-export function MapView({ shops, highlightedId, center, myPos, onPinClick, onBoundsChanged }: Props) {
+export function MapView({ shops, highlightedId, center, myPos, showToday = false, onPinClick, onBoundsChanged }: Props) {
   const [loading, error] = useKakaoLoader({
     appkey: KAKAO_KEY,
     libraries: ["clusterer"], // MarkerClusterer 사용 시 필수
@@ -192,12 +193,13 @@ export function MapView({ shops, highlightedId, center, myPos, onPinClick, onBou
       if (cancelled) return;
       const slice = toAdd.slice(i, i + BATCH);
       const markers = slice.map((s) => {
+        const green = showToday && s.todayOpen; // 토글 ON일 때만 초록
         const marker = new kakao.maps.Marker({
           position: new kakao.maps.LatLng(s.coord.lat, s.coord.lng),
-          image: s.todayOpen ? todayImage : s.hasEvent ? eventImage : images[s.category] || fallback,
+          image: green ? todayImage : s.hasEvent ? eventImage : images[s.category] || fallback,
           title: s.name,
         });
-        if (s.todayOpen) marker.setZIndex(7); // 오늘 가능(초록) 최상위
+        if (green) marker.setZIndex(7); // 오늘 가능(초록) 최상위
         else if (s.hasEvent) marker.setZIndex(6); // 할인핀
         kakao.maps.event.addListener(marker, "click", () => onClickRef.current(s));
         byId[s.id] = marker;
@@ -210,7 +212,21 @@ export function MapView({ shops, highlightedId, center, myPos, onPinClick, onBou
     if (toAdd.length) requestAnimationFrame(step);
 
     return () => { cancelled = true; };
-  }, [map, shops]);
+  }, [map, shops, showToday]);
+
+  // '오늘 예약' 토글 변화 시 기존(공유) 마커 색 즉시 갱신 — diff는 새 마커만 추가하므로 별도 동기화
+  useEffect(() => {
+    const images = imagesRef.current;
+    if (!Object.keys(images).length) return;
+    const byId = markersById.current;
+    for (const s of shops) {
+      const mk = byId[s.id];
+      if (!mk) continue;
+      const green = showToday && s.todayOpen;
+      mk.setImage(green ? images["__today__"] : s.hasEvent ? images["__event__"] : images[s.category] || images["네일"]);
+      mk.setZIndex(green ? 7 : s.hasEvent ? 6 : 3);
+    }
+  }, [showToday, shops]);
 
   // 선택 핀 강조 (imperatively 이미지 교체)
   const prevHl = useRef<string | undefined>();
@@ -222,6 +238,7 @@ export function MapView({ shops, highlightedId, center, myPos, onPinClick, onBou
       const prev = shops.find((x) => x.id === prevHl.current);
       mk(prevHl.current).setImage(
         (prev?.isPartner && imagesRef.current["__partner__"]) ||
+          (showToday && prev?.todayOpen && imagesRef.current["__today__"]) ||
           (prev?.hasEvent && imagesRef.current["__event__"]) ||
           (prev && imagesRef.current[prev.category]) ||
           imagesRef.current["네일"],
@@ -236,27 +253,51 @@ export function MapView({ shops, highlightedId, center, myPos, onPinClick, onBou
       mk(highlightedId).setZIndex(10);
     }
     prevHl.current = highlightedId;
-  }, [highlightedId, shops]);
+  }, [highlightedId, shops, showToday]);
+
+  function recenter() {
+    const kakao = (window as KakaoAny).kakao;
+    if (!map || !myPos || !kakao?.maps) return;
+    map.panTo(new kakao.maps.LatLng(myPos.lat, myPos.lng));
+  }
 
   if (error) return <Centered>지도를 불러오지 못했어요</Centered>;
   if (loading) return <Centered>지도 불러오는 중…</Centered>;
 
   return (
-    <Map
-      center={center ?? SEOUL_CENTER}
-      isPanto={!!center}
-      level={center ? 5 : 8}
-      onCreate={setMap}
-      style={{ width: "100%", height: "100%" }}
-    >
-      {myPos && (
-        <MapMarker
-          position={myPos}
-          image={{ src: MY_DOT, size: { width: 22, height: 22 } }}
-          zIndex={20}
-        />
+    <div style={{ position: "relative", width: "100%", height: "100%" }}>
+      <Map
+        center={center ?? SEOUL_CENTER}
+        isPanto={!!center}
+        level={center ? 5 : 8}
+        onCreate={setMap}
+        style={{ width: "100%", height: "100%" }}
+      >
+        {myPos && (
+          <MapMarker
+            position={myPos}
+            image={{ src: MY_DOT, size: { width: 22, height: 22 } }}
+            zIndex={20}
+          />
+        )}
+      </Map>
+      {/* 현재 위치로 돌아가기 (지도 좌하단, 시트 peek 위) */}
+      {myPos && map && (
+        <button
+          onClick={recenter}
+          aria-label="현재 위치로"
+          style={{ position: "absolute", left: 16, bottom: "calc(30vh + 14px)", zIndex: 18, width: 44, height: 44, borderRadius: 22, border: "none", background: "#fff", boxShadow: "0 2px 10px rgba(0,0,0,.18)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ec4899" strokeWidth={2} strokeLinecap="round">
+            <circle cx="12" cy="12" r="3.5" />
+            <line x1="12" y1="2" x2="12" y2="5" />
+            <line x1="12" y1="19" x2="12" y2="22" />
+            <line x1="2" y1="12" x2="5" y2="12" />
+            <line x1="19" y1="12" x2="22" y2="12" />
+          </svg>
+        </button>
       )}
-    </Map>
+    </div>
   );
 }
 

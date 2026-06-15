@@ -201,7 +201,7 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
                     return (
                       <div
                         key={i}
-                        style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13 }}
+                        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "9px 0", fontSize: 13, borderTop: i === 0 ? "none" : "1px solid #f1f1f3" }}
                       >
                         <span>
                           {isRep && <span style={{ color: "#ec4899", fontWeight: 800, marginRight: 4 }}>최저가</span>}
