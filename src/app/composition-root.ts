@@ -18,7 +18,7 @@ import { makeGetShopSlots } from "../contexts/reservation/application/get-shop-s
 // ── 어댑터 인스턴스화 (구현 선택) ─────────────────────────
 // 카탈로그: Supabase(PostgREST)에서 뷰포트 기반 조회. 다른 구현은 ShopRepository 포트만 맞추면 교체 가능.
 const shopRepo = new SupabaseShopRepository();
-const analyticsSink = new SupabaseAnalyticsSink("toss");
+const analyticsSink = new SupabaseAnalyticsSink(import.meta.env.VITE_TARGET === "vercel" ? "web" : "toss");
 const leadRepo = new SupabaseLeadRepository();
 const slotProvider = new SupabaseSlotProvider(); // 매 정각 배치가 채운 Supabase slots 조회
 

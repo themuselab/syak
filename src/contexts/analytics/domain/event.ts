@@ -7,8 +7,12 @@ export type EventName =
   | "pin_click" // 지도 핀 클릭
   | "card_click" // 리스트 카드 클릭
   | "detail_view" // 상세 진입
+  | "detail_close" // 상세 이탈 (ms=상세 체류시간)
   | "reserve_click" // 예약루트 버튼 클릭
-  | "collection_click"
+  | "collection_click" // 컬렉션 칩(오늘예약/할인/가격대…) 선택
+  | "region_select" // 지역(구/시) 선택
+  | "gallery_view" // 상세에서 포폴 사진 넘겨봄
+  | "menu_view" // 상세에서 메뉴·가격 더보기
   | "filter_apply";
 
 export type EntryRoute = "organic" | "campaign" | "deeplink" | "share";

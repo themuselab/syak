@@ -2,6 +2,7 @@
 import type { AnalyticsSink } from "../ports/analytics-sink";
 import type { AnalyticsEvent } from "../domain/event";
 import { SUPABASE_URL, SUPABASE_ANON } from "../../../shared/platform/supabase";
+import { clientId, device } from "../../../shared/platform/visitor";
 
 function sessionId(): string {
   const w = window as unknown as { __syak_sid?: string };
@@ -36,6 +37,8 @@ export class SupabaseAnalyticsSink implements AnalyticsSink {
           slot_time: event.slotTime ?? null,
           ts: Date.now(),
           platform: this.platform,
+          device, // pc | ios | android
+          client_id: clientId, // 영속 방문자 id (순방문자·리텐션)
         }),
         keepalive: true,
       }).catch(() => {});

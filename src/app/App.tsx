@@ -14,8 +14,11 @@ import { SnapSheet } from "../shared/ui/SnapSheet";
 import { ShopListSkeleton } from "../shared/ui/Skeleton";
 import { usecases } from "./composition-root";
 import { getUserPosition } from "../shared/platform/geolocation";
+import { resolveAttribution } from "../shared/platform/attribution";
+import { isReturningVisitor } from "../shared/platform/visitor";
 import { distanceMeters, type Coordinate } from "../shared/domain/coordinate";
 import type { ShopSummary, ShopPin } from "../contexts/catalog/domain/shop";
+import type { FilterCriteria } from "../contexts/catalog/domain/filters";
 
 function applyChip(list: ShopSummary[], chip: ChipKey | null): ShopSummary[] {
   if (!chip) return list;
@@ -28,6 +31,19 @@ function applyChip(list: ShopSummary[], chip: ChipKey | null): ShopSummary[] {
       : chip === "firstVisit" ? s.firstVisitDeal
       : true,
   );
+}
+
+// filter_apply 추적용 — 어떤 필터를 켰는지 요약 문자열
+function filterSummary(c: FilterCriteria): string {
+  const parts: string[] = [];
+  if (c.categories?.length) parts.push(...c.categories);
+  if (c.priceTiers?.length) parts.push(...c.priceTiers);
+  if (c.services?.length) parts.push(...c.services);
+  if (c.hasEventOnly) parts.push("이벤트");
+  if (c.firstVisitOnly) parts.push("첫방문");
+  if (c.reservableOnly) parts.push("예약가능");
+  if (c.sortBy && c.sortBy !== "recommend") parts.push(`정렬:${c.sortBy}`);
+  return parts.join(",") || "none";
 }
 
 export default function App() {
@@ -79,13 +95,12 @@ export default function App() {
 
   // 세션 진입 이벤트 (몇 명·어떤 키워드로 들어왔는지)
   useEffect(() => {
-    const p = new URLSearchParams(window.location.search);
-    const src = p.get("utm_source") || p.get("src");
-    const ref = document.referrer ? new URL(document.referrer).hostname : "";
+    const attr = resolveAttribution();
     usecases.analytics.track({
       event: "session_start",
-      entry: src ? "campaign" : ref ? "deeplink" : "organic",
-      source: src || ref || "direct",
+      entry: attr.entry,
+      source: attr.source,
+      route: isReturningVisitor ? "returning" : "new", // 신규/재방문(리텐션)
     });
     // 잔류시간: 이탈(탭 숨김) 시 session_end with 경과 ms
     const start = Date.now();
@@ -195,6 +210,7 @@ export default function App() {
   async function selectRegions(gus: string[]) {
     setFilter({ ...filter, gus: gus.length ? gus : undefined });
     if (gus.length) {
+      usecases.analytics.track({ event: "region_select", source: gus.join(",") });
       const list = await usecases.catalog.byGus(gus);
       const pts = list.filter((s) => s.coord?.lat && s.coord?.lng);
       if (pts.length) {
@@ -333,7 +349,7 @@ export default function App() {
                   {customFind.bannerLabel}
                 </div>
               ) : (
-                <CollectionChips active={chip} onSelect={setChip} />
+                <CollectionChips active={chip} onSelect={(k) => { setChip(k); if (k) usecases.analytics.track({ event: "collection_click", source: k }); }} />
               )}
               <div style={{ borderTop: "1px solid #f2f2f4" }} />
               <ShopListSheet shops={displayed} onShopClick={openDetail} onReset={resetAll} />
@@ -354,7 +370,7 @@ export default function App() {
       {filterOpen && (
         <FilterModal
           initial={filter}
-          onApply={(c) => { setFilter(c); usecases.analytics.track({ event: "filter_apply" }); }}
+          onApply={(c) => { setFilter(c); usecases.analytics.track({ event: "filter_apply", source: filterSummary(c) }); }}
           onClose={() => setFilterOpen(false)}
         />
       )}

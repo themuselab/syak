@@ -68,6 +68,22 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
     };
   }, [shopId]);
 
+  // 상세 체류시간(초) — 닫힐 때 기록. 포폴/가격 보는 시간 = 관심도 신호.
+  useEffect(() => {
+    const t0 = Date.now();
+    return () => {
+      usecases.analytics.track({ event: "detail_close", shopId, ms: Date.now() - t0 });
+    };
+  }, [shopId]);
+
+  // 포폴 사진 넘겨봄 (1회만) / 메뉴 더보기 — 상세 내부 행동
+  const galleryTracked = useRef(false);
+  function onGallerySwipe() {
+    if (galleryTracked.current) return;
+    galleryTracked.current = true;
+    usecases.analytics.track({ event: "gallery_view", shopId });
+  }
+
   return (
     <div
       style={{
@@ -115,6 +131,7 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
                 ].filter(Boolean) as string[],
               ),
             ]}
+            onSwipe={onGallerySwipe}
           />
 
           <div style={{ padding: "14px 16px 100px" }}>
@@ -215,7 +232,7 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
                     );
                   })}
                   {!showAllMenus && detail.menus.length > 5 && (
-                    <button onClick={() => setShowAllMenus(true)} style={moreBtnStyle}>
+                    <button onClick={() => { setShowAllMenus(true); usecases.analytics.track({ event: "menu_view", shopId }); }} style={moreBtnStyle}>
                       메뉴 {detail.menus.length - 5}개 더보기
                     </button>
                   )}
@@ -275,7 +292,7 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
   );
 }
 
-function Gallery({ images }: { images: string[] }) {
+function Gallery({ images, onSwipe }: { images: string[]; onSwipe?: () => void }) {
   const [idx, setIdx] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   if (!images.length)
@@ -297,7 +314,11 @@ function Gallery({ images }: { images: string[] }) {
       <div style={{ position: "relative" }}>
         <div
           ref={scrollRef}
-          onScroll={(e) => setIdx(Math.round(e.currentTarget.scrollLeft / e.currentTarget.clientWidth))}
+          onScroll={(e) => {
+            const i = Math.round(e.currentTarget.scrollLeft / e.currentTarget.clientWidth);
+            setIdx(i);
+            if (i > 0) onSwipe?.();
+          }}
           style={{ display: "flex", overflowX: "auto", scrollSnapType: "x mandatory", scrollbarWidth: "none" }}
         >
           {shown.map((src, i) => (
