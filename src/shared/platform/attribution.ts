@@ -35,9 +35,13 @@ function normSource(s: string): string {
   return v.replace(/^www\./, "");
 }
 
+// 광고(유료) 매체 표기 — utm_medium에 이게 있으면 '광고', 없으면 자연유입.
+const PAID_MEDIUM = /cpc|ppc|paid|ads?\b|display/;
+
 export function resolveAttribution(): Attribution {
   const ua = (typeof navigator !== "undefined" && navigator.userAgent ? navigator.userAgent : "").toLowerCase();
   const utm = (param("utm_source") || param("src")).trim();
+  const medium = param("utm_medium").toLowerCase();
   const fbclid = param("fbclid");
   const gclid = param("gclid");
   const igshid = param("igshid");
@@ -48,16 +52,18 @@ export function resolveAttribution(): Attribution {
     /* ignore */
   }
 
-  // 1) 명시적 UTM — 가장 신뢰
-  if (utm) return { source: normSource(utm), entry: "campaign", raw: `utm:${utm}` };
-
-  // 2) 클릭 ID (광고/플랫폼이 자동 부착)
-  if (fbclid) {
-    // 메타 광고. 인앱이면 정확한 출처(인스타/페북) 사용, 아니면 facebook 묶음.
-    const src = /instagram/.test(ua) ? "instagram" : "facebook";
-    return { source: src, entry: "campaign", raw: "fbclid" };
+  // 1) 명시적 UTM — 가장 신뢰. 광고/자연은 utm_medium으로 가른다(프로필 링크에 태깅해도 자연으로 유지).
+  if (utm) {
+    return { source: normSource(utm), entry: PAID_MEDIUM.test(medium) ? "campaign" : "deeplink", raw: `utm:${utm}/${medium || "-"}` };
   }
-  if (gclid) return { source: "google", entry: "campaign", raw: "gclid" };
+
+  // 2) 클릭 ID
+  if (gclid) return { source: "google", entry: "campaign", raw: "gclid" }; // 구글 광고 클릭 = 유료 확정
+  if (fbclid) {
+    // fbclid는 광고·자연 둘 다 붙는다 → 유료 단정 불가. 출처만 인스타/페북으로, 자연(social)로 본다.
+    const src = /instagram/.test(ua) ? "instagram" : "facebook";
+    return { source: src, entry: "deeplink", raw: "fbclid" };
+  }
   if (igshid) return { source: "instagram", entry: "share", raw: "igshid" };
 
   // 3) 인앱 브라우저 UA — referrer가 비어도 잡힌다
