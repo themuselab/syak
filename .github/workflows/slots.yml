@@ -13,7 +13,9 @@ concurrency:
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    timeout-minutes: 18 # 시간예산 14분 + 저장 여유. 25분 차단선 한참 아래.
+    # 스크랩(네이버)은 BUDGET_SEC=13분에 멈춤. 저장(Supabase)은 네이버 안 건드려서
+    # 25분 차단선과 무관 → job 타임아웃은 저장 여유 위해 24분으로(스크랩 노출은 13분 유지).
+    timeout-minutes: 24
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -31,5 +33,5 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           NUM_SHARDS: "2"
-          BUDGET_SEC: "840"
+          BUDGET_SEC: "780"
         run: python scraper/slot_ingest.py

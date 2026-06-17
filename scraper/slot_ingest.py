@@ -33,23 +33,35 @@ SB_SECRET = ENV["SUPABASE_SECRET_KEY"]
 SHARD = int(ENV.get("SHARD", "0"))
 NUM_SHARDS = int(ENV.get("NUM_SHARDS", "1"))
 # 시간 예산(초) — 이만큼 지나면 수집 멈추고 받은 것만 저장 → 타임아웃으로 죽지 않음
-BUDGET_SEC = int(ENV.get("BUDGET_SEC", "840"))  # 14분 (Actions timeout 18분보다 짧게)
+BUDGET_SEC = int(ENV.get("BUDGET_SEC", "780"))  # 13분 스크랩 후 저장 (job timeout 24분, 네이버 노출은 13분)
 
 GQL = "https://m.booking.naver.com/graphql?opName=hourlySchedule"
 QUERY = ("query hourlySchedule($scheduleParams: ScheduleParams){schedule(input:$scheduleParams)"
          "{bizItemSchedule{hourly{unitStartTime bookingCount stock isUnitBusinessDay isUnitSaleDay}}}}")
 
 
-def sb(method, path, body=None, prefer=None, extra_headers=None):
+def sb(method, path, body=None, prefer=None, extra_headers=None, tries=4):
     headers = {"apikey": SB_SECRET, "Authorization": f"Bearer {SB_SECRET}", "Content-Type": "application/json"}
     if prefer:
         headers["Prefer"] = prefer
     if extra_headers:
         headers.update(extra_headers)
     data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(f"{SB_URL}/rest/v1/{path}", data=data, method=method, headers=headers)
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return r.status, r.headers, r.read()
+    # 일시적 5xx(무료티어 콜드스타트)·네트워크 오류는 재시도. 4xx(쿼리 문제)는 즉시 raise.
+    last = None
+    for attempt in range(tries):
+        try:
+            req = urllib.request.Request(f"{SB_URL}/rest/v1/{path}", data=data, method=method, headers=headers)
+            with urllib.request.urlopen(req, timeout=60) as r:
+                return r.status, r.headers, r.read()
+        except urllib.error.HTTPError as e:
+            if e.code < 500:
+                raise
+            last = e
+        except Exception as e:
+            last = e
+        time.sleep(1.5 * (attempt + 1))
+    raise last
 
 
 def load_targets():
