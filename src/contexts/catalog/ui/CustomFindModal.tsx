@@ -2,9 +2,9 @@ import { useState } from "react";
 
 export type CustomFind = {
   date: string; // "2026-06-07"
-  hour: string; // "14:00"
-  chipLabel: string; // "화요일 2시"
-  bannerLabel: string; // "6월 10일 (화) 오후 2시 · 방금 기준"
+  hours: string[]; // ["14:00","15:00"] — 여러 시간 동시 선택(합집합)
+  chipLabel: string; // "화요일 2시 외 1"
+  bannerLabel: string; // "6월 10일 (화) 오후 2,3시 · 방금 기준"
 };
 
 const DAYS_KO = ["일", "월", "화", "수", "목", "금", "토"];
@@ -24,17 +24,25 @@ export function CustomFindModal({ onApply, onClose }: Props) {
     return d;
   });
   const [dayIdx, setDayIdx] = useState(1); // 기본 '내일' (배치 수집 날짜)
-  const [hour, setHour] = useState(14);
+  const [hours, setHours] = useState<number[]>([14]); // 여러 시간 동시 선택
+
+  function toggleHour(h: number) {
+    setHours((prev) => (prev.includes(h) ? prev.filter((x) => x !== h) : [...prev, h]));
+  }
 
   function apply() {
+    if (!hours.length) return;
     const d = dayOptions[dayIdx];
     const dow = DAYS_KO[d.getDay()];
-    const ampm = hour < 12 ? "오전" : "오후";
-    const h12 = hour <= 12 ? hour : hour - 12;
-    const chipLabel = `${dow}요일 ${h12}시`;
-    const bannerLabel = `${d.getMonth() + 1}월 ${d.getDate()}일 (${dow}) ${ampm} ${h12}시 · 방금 기준`;
+    const sorted = [...hours].sort((a, b) => a - b);
+    const h12 = (h: number) => (h <= 12 ? h : h - 12);
+    const ampm = (h: number) => (h < 12 ? "오전" : "오후");
+    const chipLabel =
+      sorted.length === 1 ? `${dow}요일 ${h12(sorted[0])}시` : `${dow} ${h12(sorted[0])}시 외 ${sorted.length - 1}`;
+    const timeStr = sorted.map((h) => `${h12(h)}시`).join(", ");
+    const bannerLabel = `${d.getMonth() + 1}월 ${d.getDate()}일 (${dow}) ${ampm(sorted[0])} ${timeStr} · 방금 기준`;
     const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    onApply({ date: ymd, hour: `${String(hour).padStart(2, "0")}:00`, chipLabel, bannerLabel });
+    onApply({ date: ymd, hours: sorted.map((h) => `${String(h).padStart(2, "0")}:00`), chipLabel, bannerLabel });
     onClose();
   }
 
@@ -67,9 +75,9 @@ export function CustomFindModal({ onApply, onClose }: Props) {
           })}
         </Group>
 
-        <Group title="시간">
+        <Group title="시간 (여러 개 선택 가능)">
           {HOURS.map((h) => (
-            <Chip key={h} active={hour === h} onClick={() => setHour(h)}>
+            <Chip key={h} active={hours.includes(h)} onClick={() => toggleHour(h)}>
               {h <= 12 ? `오전 ${h}시` : `오후 ${h - 12}시`}
             </Chip>
           ))}
@@ -77,9 +85,10 @@ export function CustomFindModal({ onApply, onClose }: Props) {
 
         <button
           onClick={apply}
-          style={{ marginTop: 22, padding: 15, width: "100%", borderRadius: 14, border: "none", background: "#ec4899", color: "#fff", fontWeight: 800, fontSize: 15 }}
+          disabled={!hours.length}
+          style={{ marginTop: 22, padding: 15, width: "100%", borderRadius: 14, border: "none", background: hours.length ? "#ec4899" : "#f0c8da", color: "#fff", fontWeight: 800, fontSize: 15 }}
         >
-          이 시간에 가능한 샵 찾기
+          {hours.length ? `이 시간에 가능한 샵 찾기 (${hours.length})` : "시간을 선택하세요"}
         </button>
       </div>
     </div>

@@ -85,8 +85,9 @@ export default function App() {
       return;
     }
     let alive = true;
-    usecases.reservation.findOpenShops(customFind.date, customFind.hour).then((ids) => {
-      if (alive) setOpenShopIds(new Set(ids));
+    // 선택한 여러 시간 중 하나라도 비는 샵 = 합집합
+    Promise.all(customFind.hours.map((h) => usecases.reservation.findOpenShops(customFind.date, h))).then((lists) => {
+      if (alive) setOpenShopIds(new Set(lists.flat()));
     });
     return () => {
       alive = false;
@@ -250,6 +251,13 @@ export default function App() {
     (filter.firstVisitOnly ? 1 : 0) +
     (filter.reservableOnly ? 1 : 0);
 
+  // 정렬 선택 시 필터 버튼에 그 라벨 노출(기본순은 "필터" 유지)
+  const sortLabel =
+    filter.sortBy === "priceLow" ? "가격 낮은순"
+      : filter.sortBy === "priceHigh" ? "가격 높은순"
+      : filter.sortBy === "partner" ? "샥 파트너"
+      : null;
+
   // 지도: 필터/검색/맞춤 없으면 경량 핀 대량 표시(밀집도), 있으면 필터된 요약 표시
   const filtering = !!q || !!chip || !!openShopIds || activeFilterCount > 0 || filter.sortBy === "partner";
   const mapShops: ShopPin[] = filtering ? displayed : pins;
@@ -284,9 +292,9 @@ export default function App() {
           <button onClick={() => setRegionOpen(true)} style={pill("dark")}>
             {regionLabel} ▾
           </button>
-          {/* 필터 */}
-          <button onClick={() => setFilterOpen(true)} style={pill("outline")}>
-            필터
+          {/* 필터 (정렬 선택 시 그 라벨 표시 — 기본순은 "필터" 유지) */}
+          <button onClick={() => setFilterOpen(true)} style={sortLabel ? pill("outlinePink") : pill("outline")}>
+            {sortLabel ?? "필터"}
             {activeFilterCount > 0 && (
               <span style={{ marginLeft: 6, background: "#ec4899", color: "#fff", borderRadius: 10, fontSize: 11, fontWeight: 700, padding: "1px 6px" }}>
                 {activeFilterCount}
@@ -300,7 +308,7 @@ export default function App() {
                 {customFind.chipLabel} ✕
               </button>
             ) : (
-              <button onClick={() => setFindOpen(true)} style={pill("dark")}>
+              <button onClick={() => setFindOpen(true)} style={pill("outlinePink")}>
                 빈자리 찾기
               </button>
             )}
@@ -318,11 +326,15 @@ export default function App() {
         )}
       </div>
 
-      {/* 취소석 알림 (지도 우하단) */}
+      {/* 취소석 알림 (지도 우하단) — primary 남발 줄이려고 흰 배경+핑크 테두리+벨 */}
       <button
         onClick={() => setLeadOpen(true)}
-        style={{ position: "absolute", right: 16, bottom: "calc(30vh + 14px)", zIndex: 18, padding: "11px 16px", borderRadius: 24, border: "none", background: "#ec4899", color: "#fff", fontWeight: 700, fontSize: 14, boxShadow: "0 4px 16px rgba(236,72,153,.35)" }}
+        style={{ position: "absolute", right: 16, bottom: "calc(30vh + 14px)", zIndex: 18, display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 15px", borderRadius: 24, border: "1.5px solid #ec4899", background: "#fff", color: "#ec4899", fontWeight: 700, fontSize: 14, boxShadow: "0 3px 12px rgba(0,0,0,.14)" }}
       >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ec4899" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+          <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+        </svg>
         취소석 알림
       </button>
 
@@ -381,9 +393,10 @@ export default function App() {
   );
 }
 
-function pill(kind: "dark" | "outline" | "active"): React.CSSProperties {
+function pill(kind: "dark" | "outline" | "active" | "outlinePink"): React.CSSProperties {
   const base: React.CSSProperties = { padding: "9px 15px", borderRadius: 20, fontSize: 14, fontWeight: 700, border: "none", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center" };
   if (kind === "dark") return { ...base, background: "#ec4899", color: "#fff" };
   if (kind === "active") return { ...base, background: "#be185d", color: "#fff" };
+  if (kind === "outlinePink") return { ...base, background: "#fff", color: "#ec4899", border: "1.5px solid #ec4899" };
   return { ...base, background: "#fff", color: "#333", border: "1.5px solid #e5e5e5" };
 }
