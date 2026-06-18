@@ -28,8 +28,8 @@ if _local.exists():
 SB_URL = ENV["SUPABASE_URL"].rstrip("/")
 SB_SECRET = ENV["SUPABASE_SECRET_KEY"]
 
-BATCH = int(ENV.get("PRICE_BATCH", "3000"))     # 이번 런에서 시도할 최대 샵 수(시간예산이 더 빨리 끊기도 함)
-WORKERS = int(ENV.get("PRICE_WORKERS", "6"))    # 동시 요청(차단 피하려 보수적)
+BATCH = int(ENV.get("PRICE_BATCH", "1500"))     # 이번 런에서 시도할 최대 샵 수(시간예산이 더 빨리 끊기도 함)
+WORKERS = int(ENV.get("PRICE_WORKERS", "3"))    # 동시 요청 — 낮게(네이버 throttle 회피)
 BUDGET_SEC = int(ENV.get("BUDGET_SEC", "600"))  # 10분 (job timeout보다 짧게)
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -106,15 +106,21 @@ def sb(method, path, body=None, prefer=None, extra_headers=None, tries=4):
 
 
 def fetch_menus(shop_id):
-    """place home 페이지에서 메뉴 추출. 반환: list(메뉴) | None(차단/실패 → 도장 안 찍음)."""
+    """place home 페이지에서 메뉴 추출. 반환: list(메뉴) | None(차단/실패 → 도장 안 찍음).
+    네이버 place는 rate가 높으면 IP를 throttle → 요청당 지연으로 낮은 속도 유지."""
     url = f"https://pcmap.place.naver.com/place/{shop_id}/home"
-    time.sleep(0.2 + random.random() * 0.5)  # 차단 회피 지터
-    try:
-        req = urllib.request.Request(url, headers=HEADERS)
-        with urllib.request.urlopen(req, timeout=15) as r:
-            html = r.read().decode("utf-8", "ignore")
-    except Exception:
-        return None
+    time.sleep(0.6 + random.random() * 1.0)  # 낮은 req/s 유지(차단 회피)
+    html = None
+    for attempt in range(2):  # 네트워크 예외만 1회 재시도 (차단은 재시도 안 함)
+        try:
+            req = urllib.request.Request(url, headers=HEADERS)
+            with urllib.request.urlopen(req, timeout=15) as r:
+                html = r.read().decode("utf-8", "ignore")
+            break
+        except Exception:
+            if attempt == 1:
+                return None
+            time.sleep(1.5)
     key = "window.__APOLLO_STATE__ = "
     i = html.find(key)
     if i < 0:

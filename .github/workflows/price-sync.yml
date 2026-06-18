@@ -4,13 +4,13 @@ name: price-sync
 # 매 런 다른 러너 IP + 시간예산 → 차단 회피. price_synced_at 도장으로 큐처럼 순환.
 on:
   schedule:
-    - cron: "0 */2 * * *" # 2시간마다 (BATCH 3000 × 12회/일 ≈ 1~2일에 전국 한 바퀴)
+    - cron: "17 * * * *" # 매시간(매번 다른 러너 IP). 낮은 속도로 작게 긁어 throttle 회피.
   workflow_dispatch:
     inputs:
       batch:
-        description: "이번 런 처리량(기본 3000)"
+        description: "이번 런 처리량(기본 1500)"
         required: false
-        default: "3000"
+        default: "1500"
 
 concurrency:
   group: price-sync
@@ -29,7 +29,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-          PRICE_BATCH: ${{ github.event.inputs.batch || '3000' }}
-          PRICE_WORKERS: "6"
+          PRICE_BATCH: ${{ github.event.inputs.batch || '1500' }}
+          PRICE_WORKERS: "3"
           BUDGET_SEC: "600"
         run: python scraper/price_sync.py
