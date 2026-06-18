@@ -4,7 +4,7 @@ name: price-sync
 # 매 런 다른 러너 IP + 시간예산 → 차단 회피. price_synced_at 도장으로 큐처럼 순환.
 on:
   schedule:
-    - cron: "17 * * * *" # 매시간(매번 다른 러너 IP). 낮은 속도로 작게 긁어 throttle 회피.
+    - cron: "17,47 * * * *" # 30분마다(매번 다른 러너 IP). 수율이 IP에 막혀서 런 횟수=새IP가 레버.
   workflow_dispatch:
     inputs:
       batch:
