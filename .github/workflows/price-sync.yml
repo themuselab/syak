@@ -1,0 +1,35 @@
+name: price-sync
+
+# 네이버 가격 변경 → 앱 반영. 전국 4만을 한 번에 X, '가장 오래 안 본 샵'부터 롤링 갱신.
+# 매 런 다른 러너 IP + 시간예산 → 차단 회피. price_synced_at 도장으로 큐처럼 순환.
+on:
+  schedule:
+    - cron: "0 */2 * * *" # 2시간마다 (BATCH 3000 × 12회/일 ≈ 1~2일에 전국 한 바퀴)
+  workflow_dispatch:
+    inputs:
+      batch:
+        description: "이번 런 처리량(기본 3000)"
+        required: false
+        default: "3000"
+
+concurrency:
+  group: price-sync
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15 # 스크랩 예산 10분 + 저장 여유
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Sync prices ← Naver
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          PRICE_BATCH: ${{ github.event.inputs.batch || '3000' }}
+          PRICE_WORKERS: "6"
+          BUDGET_SEC: "600"
+        run: python scraper/price_sync.py
