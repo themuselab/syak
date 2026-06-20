@@ -100,11 +100,19 @@ def render(gu, shops, all_regions):
     others = [g for g in all_regions if g != gu][:24]
     links = " · ".join(f'<a href="/nail/{slug(g)}/">{esc(g)} 네일</a>' for g in others)
 
+    # 사람: JS로 앱(해당 지역 필터)으로 즉시 이동 → '우리 사이트에서 안산 결과' 바로 보임.
+    # 크롤러(네이버 등 JS 미실행): 아래 정적 HTML(샵 목록)을 그대로 색인 → SEO 유지.
+    redirect = "/?" + urllib.parse.urlencode({"gu": gu, "utm_source": "seo",
+                                              "utm_medium": "organic", "utm_campaign": f"nail-{gu}"})
+    redirect_js = (f"<script>if(location.search.indexOf('noredirect')<0)"
+                   f"location.replace({json.dumps(redirect, ensure_ascii=False)});</script>")
+
     return f"""<!doctype html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+{redirect_js}
 <title>{esc(title)}</title>
 <meta name="description" content="{esc(desc)}">
 <link rel="canonical" href="{url}">
