@@ -5,6 +5,6 @@
   "framework": "vite",
   "installCommand": "npm install",
   "rewrites": [
-    { "source": "/((?!assets|data|icon|favicon|robots|og|fallback).*)", "destination": "/" }
+    { "source": "/((?!assets|data|icon|favicon|robots|sitemap|nail|og|fallback).*)", "destination": "/" }
   ]
 }

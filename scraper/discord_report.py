@@ -104,6 +104,8 @@ def src_bucket(s):
         return "인스타(메타)"
     if s in ("threads", "barcelona"):
         return "스레드"
+    if s == "seo":
+        return "검색(SEO)"
     if s in ("direct", ""):
         return "직접·링크"
     if s == "kakao":

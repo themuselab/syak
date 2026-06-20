@@ -143,6 +143,13 @@ export default function App() {
     });
   }, []);
 
+  // SEO 랜딩(/nail/{지역})에서 ?gu= 달고 들어오면 그 지역으로 바로 진입
+  useEffect(() => {
+    const gu = new URLSearchParams(window.location.search).get("gu");
+    if (gu) selectRegions([gu]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const q = query.trim();
 
   // 이름 검색 (서버측, 디바운스). 비우면 다시 지도 영역 모드로.
