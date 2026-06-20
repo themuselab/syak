@@ -118,13 +118,15 @@ export default function App() {
 
   // 첫 진입: 내 위치로 지도 이동 (그 영역 샵은 지도 idle 시 자동 로드)
   useEffect(() => {
+    // SEO 진입(?gu=)은 그 지역이 지도 중심을 가져야 함 → 위치로 센터 덮지 않음(myPos만 갱신)
+    const hasGu = !!new URLSearchParams(window.location.search).get("gu");
     // 1) 마지막 위치 즉시 복원 → 재방문 일관성 + 서울시청 깜빡임 방지
     try {
       const saved = localStorage.getItem("syak_last_pos");
       if (saved) {
         const p = JSON.parse(saved) as Coordinate;
         setMyPos(p);
-        setMapCenter(p);
+        if (!hasGu) setMapCenter(p);
       }
     } catch {
       /* ignore */
@@ -133,7 +135,7 @@ export default function App() {
     getUserPosition().then((pos) => {
       if (pos) {
         setMyPos(pos);
-        setMapCenter(pos);
+        if (!hasGu) setMapCenter(pos);
         try {
           localStorage.setItem("syak_last_pos", JSON.stringify(pos));
         } catch {
@@ -174,13 +176,22 @@ export default function App() {
   const lastBounds = useRef<Parameters<typeof loadBounds>[0] | null>(null);
   const sortByRef = useRef(filter.sortBy);
   sortByRef.current = filter.sortBy;
+  const gusRef = useRef(filter.gus);
+  gusRef.current = filter.gus;
+  // 지역(gus)·검색·파트너 모드면 뷰포트 재로드 금지(그 결과를 권위있게 유지).
+  // 예약된 로드도 발동 시점에 다시 확인 → 지역 선택이 뒤늦게 들어와도 덮어쓰기 방지.
+  const skipBounds = () => !!qRef.current || sortByRef.current === "partner" || !!gusRef.current?.length;
   const onBoundsChanged = useCallback(
     (b: Parameters<typeof loadBounds>[0]) => {
       lastBounds.current = b;
-      if (qRef.current || sortByRef.current === "partner") return;
+      if (skipBounds()) return;
       if (boundsTimer.current) clearTimeout(boundsTimer.current);
-      boundsTimer.current = setTimeout(() => loadBounds(b), 350);
+      boundsTimer.current = setTimeout(() => {
+        if (skipBounds()) return;
+        loadBounds(b);
+      }, 350);
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [loadBounds],
   );
 
