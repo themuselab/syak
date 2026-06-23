@@ -132,14 +132,14 @@ def shop_names_for(ids):
 def main():
     kst = timezone(timedelta(hours=9))
     since = (datetime.now(timezone.utc) - timedelta(hours=HOURS)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    cols = "session_id,client_id,event,source,entry,route,device,ms,slot_date,slot_time,shop_id,shop_district,created_at"
+    cols = "session_id,client_id,event,source,entry,route,device,platform,ms,slot_date,slot_time,shop_id,shop_district,created_at"
     try:
         events = sb_get(f"events?created_at=gte.{since}&select={cols}")
     except urllib.error.HTTPError as e:
         if e.code != 400:
             raise
         # device/client_id 컬럼 미생성(SQL 전) → 빼고 조회 (degraded)
-        cols = "session_id,event,source,entry,route,ms,slot_date,slot_time,shop_id,shop_district,created_at"
+        cols = "session_id,event,source,entry,route,platform,ms,slot_date,slot_time,shop_id,shop_district,created_at"
         events = sb_get(f"events?created_at=gte.{since}&select={cols}")
     leads = sb_get(f"leads?created_at=gte.{since}&select=id")
 
@@ -161,6 +161,10 @@ def main():
         extra = f" (광고 {paid}·자연 {tot - paid})" if paid else ""
         src_lines.append(f"· {b}: {tot}{extra}")
     src_text = "\n".join(src_lines) or "—"
+
+    # ── 플랫폼 (toss 미니앱 vs 웹) ──
+    plat = Counter(e.get("platform") or "web" for e in starts)
+    plat_text = " · ".join(f"{'Toss' if k == 'toss' else '웹'} {v}" for k, v in plat.most_common()) or "—"
 
     # ── 디바이스 ──
     dev = Counter(e.get("device") or "?" for e in starts)
@@ -259,7 +263,8 @@ def main():
             {"name": "신규 / 재방문", "value": f"신규 {new_n} · 재방문 {ret_n}", "inline": True},
             {"name": "평균 세션 잔류", "value": f"{avg_dwell}초", "inline": True},
             {"name": "🔗 유입 경로", "value": src_text, "inline": False},
-            {"name": "📱 디바이스", "value": dev_text, "inline": False},
+            {"name": "📱 디바이스", "value": dev_text, "inline": True},
+            {"name": "🟦 플랫폼", "value": plat_text, "inline": True},
             {"name": "⏰ 붐비는 시간", "value": busy_h, "inline": True},
             {"name": "📅 붐비는 요일", "value": busy_d, "inline": True},
         ],
