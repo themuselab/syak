@@ -1,14 +1,15 @@
-"""프로그래매틱 SEO 랜딩 페이지 생성.
+"""프로그래매틱 SEO 데이터 생성 (단일 함수 렌더링용).
 
-지역별 '당일 예약 네일샵' 정적 HTML을 public/nail/{지역}/index.html 로 생성.
-- SPA(Vite)는 SEO가 안 되므로(클라 렌더) 정적 HTML을 따로 만들어 검색 노출.
+지역별 '당일 예약 네일샵' 데이터를 api/regions.json 한 파일로 생성.
+- 예전엔 지역 수만큼 정적 HTML(public/nail/{지역}/index.html)을 만들었으나,
+  이제는 데이터만 내보내고 HTML은 요청 시 api/nail.js 가 렌더한다(단일 템플릿).
+- SPA(Vite)는 클라 렌더라 SEO가 안 되므로, /nail/:gu 는 서버리스 함수가 완성된 HTML로 응답.
 - 데이터(전국 네일 가격·할인·당일예약)를 그대로 콘텐츠화 → 고의도 롱테일 검색 포착.
-- 모든 CTA에 utm 부착(utm_source=seo) → 유입 추적.
 - sitemap.xml + robots.txt 도 생성.
 
 실행: python seo_generate.py   (scraper/.env의 Supabase 키 사용)
 """
-import json, sys, urllib.request, urllib.parse, html as _html
+import json, sys, urllib.request, urllib.parse
 from pathlib import Path
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -23,7 +24,9 @@ SB_URL = ENV["SUPABASE_URL"].rstrip("/")
 SB_KEY = ENV["SUPABASE_SECRET_KEY"]
 
 SITE = "https://www.themuselab.kr"
-PUBLIC = Path(__file__).resolve().parents[1] / "public"
+ROOT = Path(__file__).resolve().parents[1]
+PUBLIC = ROOT / "public"
+API = ROOT / "api"
 MIN_SHOPS = 5   # 이보다 적으면 페이지 안 만듦(thin content 방지)
 TOP_N = 40      # 페이지당 표시 샵 수
 
@@ -38,6 +41,16 @@ GYEONGSANG_SI = ["창원시","진주시","포항시"]
 JEOLLA_SI = ["전주시","여수시"]
 REGIONS = SEOUL_GU + GYEONGGI_SI + INCHEON_GU + BUSAN_GU + DAEGU_GU + GWANGJU_GU + GYEONGSANG_SI + JEOLLA_SI
 
+# 생활권(洞 단위 브랜드 검색어) 전용 페이지.
+# 사람들은 행정구("고양시")가 아니라 생활권("일산")으로 검색한다 → 별도 랜딩으로 노출 포착.
+# 상위 행정구(gu) 샵 중 이름에 tokens가 포함된 샵만 추려 thin-content 없이 정직하게 구성.
+SAENGGWON = {
+    "일산": {"gu": "고양시",
+             "tokens": ["일산", "주엽", "정발산", "백석", "장항", "마두", "대화", "탄현", "킨텍스", "풍동", "식사", "중산"],
+             "dongs": ["주엽", "정발산", "백석", "장항", "킨텍스", "마두", "대화"],
+             "nearby": ["고양시", "김포시", "파주시", "은평구", "마포구"]},
+}
+
 
 def sb_get(path):
     req = urllib.request.Request(f"{SB_URL}/rest/v1/{path}",
@@ -46,144 +59,73 @@ def sb_get(path):
         return json.loads(r.read())
 
 
-def esc(s):
-    return _html.escape(str(s or ""))
+def fetch_gu(gu):
+    nail = urllib.parse.quote("네일")
+    return sb_get(f"shops?category=eq.{nail}&gu=eq.{urllib.parse.quote(gu)}"
+                  f"&select=id,name,min_price,price_tier,has_event,first_visit_deal,today_open,review_count"
+                  f"&order=review_count.desc.nullslast&limit={TOP_N}")
 
 
-def won(p):
-    return f"{int(p):,}원" if p else None
-
-
-def deep_link(gu, extra=""):
-    q = urllib.parse.urlencode({"utm_source": "seo", "utm_medium": "organic",
-                                "utm_campaign": f"nail-{gu}", "gu": gu})
-    return f"{SITE}/?{q}{extra}"
+def to_shop(s):
+    # api/nail.js 가 쓰는 짧은 키로 압축. (name, tier, min, rv, today, ev, fv)
+    return {"name": s["name"], "tier": s.get("price_tier") or "",
+            "min": s.get("min_price"), "rv": s.get("review_count"),
+            "today": bool(s.get("today_open")),
+            "ev": bool(s.get("has_event")), "fv": bool(s.get("first_visit_deal"))}
 
 
 def slug(gu):
     return urllib.parse.quote(gu.replace(" ", "-"))
 
 
-def render(gu, shops, all_regions):
-    n = len(shops)
-    today = sum(1 for s in shops if s.get("today_open"))
-    deal = sum(1 for s in shops if s.get("has_event") or s.get("first_visit_deal"))
-    prices = sorted(s["min_price"] for s in shops if s.get("min_price"))
-    low = won(prices[0]) if prices else "—"
-    title = f"{gu} 네일샵 추천 · 당일 예약 가능 가격비교 | 샥"
-    desc = (f"{gu} 네일샵 {n}곳의 대표가격과 당일 예약 가능 여부를 한눈에. "
-            f"최저 {low}부터, 할인·이벤트 {deal}곳. 지금 예약 가능한 곳을 샥에서 바로 확인하세요.")
-    url = f"{SITE}/nail/{slug(gu)}/"
-
-    # 샵 카드
-    cards = []
-    items_ld = []
-    for i, s in enumerate(shops, 1):
-        badges = []
-        if s.get("today_open"): badges.append('<span class="b green">오늘 예약 가능</span>')
-        if s.get("has_event"): badges.append('<span class="b pink">할인·이벤트</span>')
-        if s.get("first_visit_deal"): badges.append('<span class="b pink">첫방문 할인</span>')
-        price = won(s.get("min_price")) or "가격문의"
-        rv = f' · 리뷰 {s["review_count"]:,}' if s.get("review_count") else ""
-        cards.append(
-            f'<li class="card"><a href="{deep_link(gu)}" rel="nofollow">'
-            f'<div class="nm">{esc(s["name"])}</div>'
-            f'<div class="meta">{esc(s.get("price_tier") or "")} · {esc(price)}~{rv}</div>'
-            f'<div class="badges">{"".join(badges)}</div></a></li>')
-        items_ld.append({"@type": "ListItem", "position": i,
-                         "item": {"@type": "BeautySalon", "name": s["name"], "areaServed": gu}})
-
-    ld = {"@context": "https://schema.org", "@type": "ItemList",
-          "name": f"{gu} 네일샵", "numberOfItems": n, "itemListElement": items_ld}
-
-    # 다른 지역 내부링크 (SEO 링크그래프) — 같은 그룹 위주 12개
-    others = [g for g in all_regions if g != gu][:24]
-    links = " · ".join(f'<a href="/nail/{slug(g)}/">{esc(g)} 네일</a>' for g in others)
-
-    # 사람: JS로 앱(해당 지역 필터)으로 즉시 이동 → '우리 사이트에서 안산 결과' 바로 보임.
-    # 크롤러(네이버 등 JS 미실행): 아래 정적 HTML(샵 목록)을 그대로 색인 → SEO 유지.
-    redirect = "/?" + urllib.parse.urlencode({"gu": gu, "utm_source": "seo",
-                                              "utm_medium": "organic", "utm_campaign": f"nail-{gu}"})
-    redirect_js = (f"<script>if(location.search.indexOf('noredirect')<0)"
-                   f"location.replace({json.dumps(redirect, ensure_ascii=False)});</script>")
-
-    return f"""<!doctype html>
-<html lang="ko">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="icon" type="image/png" href="/icon.png">
-{redirect_js}
-<title>{esc(title)}</title>
-<meta name="description" content="{esc(desc)}">
-<link rel="canonical" href="{url}">
-<meta name="theme-color" content="#ec4899">
-<meta property="og:type" content="website">
-<meta property="og:title" content="{esc(title)}">
-<meta property="og:description" content="{esc(desc)}">
-<meta property="og:url" content="{url}">
-<meta property="og:image" content="{SITE}/og.png">
-<script type="application/ld+json">{json.dumps(ld, ensure_ascii=False)}</script>
-<style>
-*{{box-sizing:border-box}}body{{margin:0;font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;color:#222;background:#fff;line-height:1.5}}
-.wrap{{max-width:680px;margin:0 auto;padding:20px 16px 60px}}
-h1{{font-size:24px;margin:8px 0 6px}}.sub{{color:#666;font-size:14px;margin:0 0 16px}}
-.cta{{display:block;text-align:center;background:#ec4899;color:#fff;font-weight:800;font-size:16px;padding:15px;border-radius:14px;text-decoration:none;margin:18px 0}}
-.stats{{display:flex;gap:8px;margin:14px 0}}.stat{{flex:1;background:#fdeef6;border-radius:12px;padding:11px;text-align:center}}
-.stat b{{display:block;font-size:18px;color:#ec4899}}.stat span{{font-size:12px;color:#9b2a5e}}
-ul{{list-style:none;padding:0;margin:0}}.card{{border-top:1px solid #f1f1f3}}.card a{{display:block;padding:12px 2px;text-decoration:none;color:inherit}}
-.nm{{font-weight:700;font-size:15px}}.meta{{font-size:13px;color:#666;margin-top:2px}}
-.badges{{margin-top:6px;display:flex;gap:5px;flex-wrap:wrap}}.b{{font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px}}
-.b.green{{background:#e7f7ee;color:#16a34a}}.b.pink{{background:#fde8f1;color:#ec4899}}
-.links{{margin-top:30px;font-size:13px;color:#888;line-height:2}}.links a{{color:#888;text-decoration:none}}
-footer{{margin-top:30px;font-size:12px;color:#aaa}}
-</style>
-</head>
-<body><div class="wrap">
-<h1>{esc(gu)} 당일 예약 가능한 네일샵</h1>
-<p class="sub">{esc(gu)} 네일샵 {n}곳의 가격대와 예약 가능 여부를 모았어요. 실시간 빈자리는 샥에서 바로 확인하세요.</p>
-<div class="stats">
-<div class="stat"><b>{n}</b><span>네일샵</span></div>
-<div class="stat"><b>{today}</b><span>오늘 예약</span></div>
-<div class="stat"><b>{deal}</b><span>할인·첫방문</span></div>
-</div>
-<a class="cta" href="{deep_link(gu)}">샥에서 {esc(gu)} 빈자리 보기 →</a>
-<h2 style="font-size:17px;margin:24px 0 4px">{esc(gu)} 네일샵 목록</h2>
-<ul>{"".join(cards)}</ul>
-<a class="cta" href="{deep_link(gu)}">지금 예약 가능한 곳 지도로 보기 →</a>
-<div class="links"><b style="color:#666">다른 지역 네일샵</b><br>{links}</div>
-<footer>샥(syak) · 지금 예약 되는 동네 뷰티샵 · <a href="{SITE}" style="color:#aaa">themuselab.kr</a></footer>
-</div></body></html>"""
-
-
 def main():
-    made, urls = 0, []
-    nail = urllib.parse.quote("네일")
+    data, order, saeng = {}, [], []
+
     for gu in REGIONS:
-        rows = sb_get(f"shops?category=eq.{nail}&gu=eq.{urllib.parse.quote(gu)}"
-                      f"&select=id,name,min_price,price_tier,has_event,first_visit_deal,today_open,review_count"
-                      f"&order=review_count.desc.nullslast&limit={TOP_N}")
+        rows = fetch_gu(gu)
         if len(rows) < MIN_SHOPS:
             continue
-        out = PUBLIC / "nail" / gu.replace(" ", "-")
-        out.mkdir(parents=True, exist_ok=True)
-        (out / "index.html").write_text(render(gu, rows, REGIONS), encoding="utf-8")
-        urls.append(f"{SITE}/nail/{slug(gu)}/")
-        made += 1
+        data[gu] = {"linkGu": None, "shops": [to_shop(s) for s in rows]}
+        order.append(gu)
         print(f"  ✓ {gu}: {len(rows)}곳")
 
-    # sitemap.xml
+    # 생활권(예: 일산) — 상위 행정구 샵을 이름 토큰으로 추려 별도 키워드 페이지.
+    for label, cfg in SAENGGWON.items():
+        rows = [s for s in fetch_gu(cfg["gu"])
+                if any(t in (s.get("name") or "") for t in cfg["tokens"])]
+        if len(rows) < MIN_SHOPS:
+            print(f"  · {label}: {len(rows)}곳(생략, <{MIN_SHOPS})")
+            continue
+        entry = {"linkGu": cfg["gu"], "shops": [to_shop(s) for s in rows]}
+        if cfg.get("dongs"):
+            entry["dongs"] = cfg["dongs"]
+        if cfg.get("nearby"):
+            entry["nearby"] = cfg["nearby"]
+        data[label] = entry
+        saeng.append(label)
+        print(f"  ✓ {label}(생활권/{cfg['gu']}): {len(rows)}곳")
+
+    # api/regions.json — 단일 렌더 함수(api/nail.js)가 읽는 데이터 소스
+    API.mkdir(parents=True, exist_ok=True)
+    (API / "regions.json").write_text(
+        json.dumps({"site": SITE, "order": order, "saenggwon": saeng, "data": data},
+                   ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+
+    # sitemap.xml — 생활권은 고의도 검색어라 priority 0.8(행정구 0.7보다 높게)
     sm = ['<?xml version="1.0" encoding="UTF-8"?>',
           '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
           f"<url><loc>{SITE}/</loc><priority>1.0</priority></url>"]
-    for u in urls:
-        sm.append(f"<url><loc>{u}</loc><priority>0.7</priority></url>")
+    for g in saeng:
+        sm.append(f"<url><loc>{SITE}/nail/{slug(g)}/</loc><priority>0.8</priority></url>")
+    for g in order:
+        sm.append(f"<url><loc>{SITE}/nail/{slug(g)}/</loc><priority>0.7</priority></url>")
     sm.append("</urlset>")
     (PUBLIC / "sitemap.xml").write_text("\n".join(sm), encoding="utf-8")
-    # robots.txt
     (PUBLIC / "robots.txt").write_text(
         f"User-agent: *\nAllow: /\nSitemap: {SITE}/sitemap.xml\n", encoding="utf-8")
-    print(f"\n✅ SEO 페이지 {made}개 + sitemap.xml + robots.txt 생성 → {PUBLIC}")
+
+    print(f"\n✅ regions.json({len(order)}지역+{len(saeng)}생활권) + sitemap.xml + robots.txt 생성")
+    print(f"   → {API/'regions.json'}")
 
 
 if __name__ == "__main__":

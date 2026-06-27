@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 <url><loc>https://www.themuselab.kr/</loc><priority>1.0</priority></url>
+<url><loc>https://www.themuselab.kr/nail/%EC%9D%BC%EC%82%B0/</loc><priority>0.8</priority></url>
 <url><loc>https://www.themuselab.kr/nail/%EA%B0%95%EB%82%A8%EA%B5%AC/</loc><priority>0.7</priority></url>
 <url><loc>https://www.themuselab.kr/nail/%EA%B0%95%EB%8F%99%EA%B5%AC/</loc><priority>0.7</priority></url>
 <url><loc>https://www.themuselab.kr/nail/%EA%B0%95%EB%B6%81%EA%B5%AC/</loc><priority>0.7</priority></url>

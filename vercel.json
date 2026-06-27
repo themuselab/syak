@@ -5,6 +5,8 @@
   "framework": "vite",
   "installCommand": "npm install",
   "rewrites": [
-    { "source": "/((?!assets|data|icon|favicon|robots|sitemap|nail|og|fallback).*)", "destination": "/" }
+    { "source": "/nail/:gu", "destination": "/api/nail?gu=:gu" },
+    { "source": "/nail/:gu/", "destination": "/api/nail?gu=:gu" },
+    { "source": "/((?!assets|data|api|icon|favicon|robots|sitemap|nail|og|fallback).*)", "destination": "/" }
   ]
 }
