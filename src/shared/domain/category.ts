@@ -41,8 +41,8 @@ export const DAEGU_GU = [
 // 광주 광역시 (저장 라벨 "광주 {구}")
 export const GWANGJU_GU = ["광주 동구", "광주 서구"] as const;
 
-// 경상 (경남: 창원·진주 / 경북: 포항) — 데이터 있는 주요 도시
-export const GYEONGSANG_SI = ["창원시", "진주시", "포항시"] as const;
+// 경상 (경남: 창원·진주 / 경북: 포항·구미) — 데이터 있는 주요 도시
+export const GYEONGSANG_SI = ["창원시", "진주시", "포항시", "구미시"] as const;
 
 // 전라 (전북: 전주 / 전남: 여수)
 export const JEOLLA_SI = ["전주시", "여수시"] as const;

@@ -20,3 +20,44 @@ body {
     background-color: #f5f5f5 !important;
   }
 }
+
+/* 움직이는 그라데이션 테두리 (취소석 알림 버튼 강조) */
+@property --shak-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+@keyframes shak-spin {
+  to {
+    --shak-angle: 360deg;
+  }
+}
+.shak-glow::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+  padding: 3px; /* 테두리 두께 */
+  background: conic-gradient(
+    from var(--shak-angle),
+    #ec4899,
+    #f59e0b,
+    #fde047,
+    #ec4899,
+    #8b5cf6,
+    #ec4899
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: shak-spin 2.6s linear infinite;
+  z-index: -1;
+}
+/* @property 미지원 환경 폴백: 정적 그라데이션 테두리라도 보이게 */
+@supports not (background: conic-gradient(from var(--shak-angle), red, blue)) {
+  .shak-glow::before {
+    background: linear-gradient(135deg, #ec4899, #f59e0b, #8b5cf6);
+    animation: none;
+  }
+}

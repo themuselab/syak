@@ -346,8 +346,9 @@ export default function App() {
 
       {/* 취소석 알림 (지도 우하단) — primary 남발 줄이려고 흰 배경+핑크 테두리+벨 */}
       <button
+        className="shak-glow"
         onClick={() => setLeadOpen(true)}
-        style={{ position: "absolute", right: 16, bottom: "calc(30vh + 14px)", zIndex: 18, display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 15px", borderRadius: 24, border: "1.5px solid #ec4899", background: "#fff", color: "#ec4899", fontWeight: 700, fontSize: 14, boxShadow: "0 3px 12px rgba(0,0,0,.14)" }}
+        style={{ position: "absolute", right: 16, bottom: "calc(30vh + 14px)", zIndex: 18, display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 15px", borderRadius: 24, border: "none", background: "#fff", color: "#ec4899", fontWeight: 700, fontSize: 14, boxShadow: "0 3px 12px rgba(0,0,0,.14)" }}
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ec4899" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
           <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
