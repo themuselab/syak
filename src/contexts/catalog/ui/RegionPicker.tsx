@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { SEOUL_GU, GYEONGGI_SI, INCHEON_GU, BUSAN_GU, DAEGU_GU, GWANGJU_GU, GYEONGSANG_SI, JEOLLA_SI } from "../../../shared/domain/category";
+import { SEOUL_GU, GYEONGGI_SI, INCHEON_GU, BUSAN_GU, DAEGU_GU, GWANGJU_GU, DAEJEON_GU, ULSAN_GU, SEJONG_SI, GYEONGSANG_SI, JEOLLA_SI, GANGWON_SI, CHUNGCHEONG_SI, JEJU_SI } from "../../../shared/domain/category";
 
 type Props = {
   selected: string[];
@@ -52,9 +52,15 @@ export function RegionPicker({ selected, onApply, onClose }: Props) {
           <Section label="인천" items={INCHEON_GU} sel={sel} onToggle={toggle} strip="인천 " />
           <Section label="부산" items={BUSAN_GU} sel={sel} onToggle={toggle} strip="부산 " />
           <Section label="대구" items={DAEGU_GU} sel={sel} onToggle={toggle} strip="대구 " />
+          <Section label="대전" items={DAEJEON_GU} sel={sel} onToggle={toggle} strip="대전 " />
+          <Section label="울산" items={ULSAN_GU} sel={sel} onToggle={toggle} strip="울산 " />
           <Section label="광주" items={GWANGJU_GU} sel={sel} onToggle={toggle} strip="광주 " />
+          <Section label="세종" items={SEJONG_SI} sel={sel} onToggle={toggle} />
+          <Section label="강원" items={GANGWON_SI} sel={sel} onToggle={toggle} />
+          <Section label="충청" items={CHUNGCHEONG_SI} sel={sel} onToggle={toggle} />
           <Section label="경상" items={GYEONGSANG_SI} sel={sel} onToggle={toggle} />
           <Section label="전라" items={JEOLLA_SI} sel={sel} onToggle={toggle} />
+          <Section label="제주" items={JEJU_SI} sel={sel} onToggle={toggle} />
           <div style={{ height: 6 }} />
         </div>
 

@@ -39,13 +39,37 @@ export const DAEGU_GU = [
 ] as const;
 
 // 광주 광역시 (저장 라벨 "광주 {구}")
-export const GWANGJU_GU = ["광주 동구", "광주 서구"] as const;
+export const GWANGJU_GU = ["광주 동구", "광주 서구", "광주 남구", "광주 북구", "광주 광산구"] as const;
 
-// 경상 (경남: 창원·진주 / 경북: 포항·구미) — 데이터 있는 주요 도시
-export const GYEONGSANG_SI = ["창원시", "진주시", "포항시", "구미시"] as const;
+// 대전 광역시 (저장 라벨 "대전 {구}")
+export const DAEJEON_GU = ["대전 중구", "대전 동구", "대전 서구", "대전 유성구", "대전 대덕구"] as const;
 
-// 전라 (전북: 전주 / 전남: 여수)
-export const JEOLLA_SI = ["전주시", "여수시"] as const;
+// 울산 광역시 (저장 라벨 "울산 {구}")
+export const ULSAN_GU = ["울산 중구", "울산 남구", "울산 동구", "울산 북구", "울산 울주군"] as const;
+
+// 세종
+export const SEJONG_SI = ["세종시"] as const;
+
+// 경상 (경남: 창원·진주·김해·양산·거제·통영·사천·밀양·함안·거창 / 경북: 포항·구미·경산·경주·안동·김천·영주)
+export const GYEONGSANG_SI = [
+  "창원시", "김해시", "양산시", "거제시", "통영시", "진주시", "사천시", "밀양시", "함안군", "거창군",
+  "포항시", "구미시", "경산시", "경주시", "안동시", "김천시", "영주시",
+] as const;
+
+// 전라 (전북: 전주·익산·군산·정읍·남원 / 전남: 여수·순천·목포·광양·나주)
+export const JEOLLA_SI = [
+  "전주시", "익산시", "군산시", "정읍시", "남원시",
+  "여수시", "순천시", "목포시", "광양시", "나주시",
+] as const;
+
+// 강원
+export const GANGWON_SI = ["춘천시", "원주시", "강릉시", "속초시", "동해시"] as const;
+
+// 충청 (충북: 청주·충주·제천 / 충남: 천안·아산·서산·당진·공주)
+export const CHUNGCHEONG_SI = ["청주시", "충주시", "제천시", "천안시", "아산시", "서산시", "당진시", "공주시"] as const;
+
+// 제주
+export const JEJU_SI = ["제주시", "서귀포시"] as const;
 
 export type District =
   | (typeof SEOUL_GU)[number]
@@ -54,8 +78,14 @@ export type District =
   | (typeof BUSAN_GU)[number]
   | (typeof DAEGU_GU)[number]
   | (typeof GWANGJU_GU)[number]
+  | (typeof DAEJEON_GU)[number]
+  | (typeof ULSAN_GU)[number]
+  | (typeof SEJONG_SI)[number]
   | (typeof GYEONGSANG_SI)[number]
-  | (typeof JEOLLA_SI)[number];
+  | (typeof JEOLLA_SI)[number]
+  | (typeof GANGWON_SI)[number]
+  | (typeof CHUNGCHEONG_SI)[number]
+  | (typeof JEJU_SI)[number];
 
 // 예약 item에서 추출한 시술 태그 (backfill_booking.py의 SERVICE_TAGS 라벨과 동일)
 // "젤네일 되는 샵 찾기" 발견 필터용
