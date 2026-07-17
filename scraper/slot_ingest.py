@@ -5,6 +5,7 @@
 - Supabase slots 테이블에 갱신 (해당 날짜창 비우고 INSERT)
 
 env: SUPABASE_URL, SUPABASE_SECRET_KEY  (GitHub Actions Secrets에서 주입)
+     API_BASE_URL, INTERNAL_API_KEY     (빈자리 알림 dispatch용 — 없으면 알림만 skip)
 로컬 실행 시엔 같은 폴더의 .env 도 읽음.
 """
 import json, os, re, sys, time, urllib.request, urllib.error, zlib
@@ -62,6 +63,61 @@ def sb(method, path, body=None, prefer=None, extra_headers=None, tries=4):
             last = e
         time.sleep(1.5 * (attempt + 1))
     raise last
+
+
+def notify_new_slots(new_by_shop, slot_date):
+    """새로 생긴 '오늘' 빈자리를 백엔드 알림 엔드포인트로 밀어준다.
+
+    백엔드(syak_BE)의 POST /notifications/internal/dispatch 가
+    즐겨찾기·주변 대상을 찾아 FCM 푸시 + 알림 저장을 한다.
+    - 실패해도 슬롯 수집엔 영향 없게 best-effort.
+    - API_BASE_URL / INTERNAL_API_KEY 없으면 조용히 skip (로컬 실행 등).
+    """
+    base = (ENV.get("API_BASE_URL") or "").rstrip("/")
+    key = ENV.get("INTERNAL_API_KEY") or ""
+    if not base or not key:
+        print("   ℹ️ 알림 skip (API_BASE_URL/INTERNAL_API_KEY 미설정)")
+        return
+    if not new_by_shop:
+        return
+
+    # 알림엔 shopName/lat/lng 가 필요 → 대상 샵 메타 조회
+    sids = list(new_by_shop.keys())
+    meta = {}
+    for i in range(0, len(sids), 200):
+        chunk = ",".join(str(x) for x in sids[i:i+200])
+        try:
+            _, _, b = sb("GET", f"shops?id=in.({chunk})&select=id,name,lat,lng")
+            for r in json.loads(b):
+                meta[r["id"]] = r
+        except Exception:
+            pass
+
+    events = []
+    for sid, times in new_by_shop.items():
+        m = meta.get(sid)
+        if not m:
+            continue
+        for tm in times:
+            events.append({"shopId": str(sid), "shopName": m.get("name") or "샵",
+                           "shopLat": m.get("lat"), "shopLng": m.get("lng"),
+                           "slotDate": slot_date, "slotTime": tm})
+    if not events:
+        return
+
+    url = f"{base}/notifications/internal/dispatch"
+    sent = 0
+    for i in range(0, len(events), 200):
+        body = json.dumps({"events": events[i:i+200]}).encode()
+        try:
+            req = urllib.request.Request(url, data=body, method="POST",
+                headers={"Content-Type": "application/json", "X-Internal-Key": key})
+            with urllib.request.urlopen(req, timeout=30) as r:
+                r.read()
+            sent += len(events[i:i+200])
+        except Exception as e:
+            print(f"   ⚠️ 알림 dispatch 실패: {e}")
+    print(f"🔔 새 빈자리 알림: {len(new_by_shop)}곳 / {sent}건 dispatch")
 
 
 def load_targets():
@@ -189,6 +245,21 @@ def main():
     rows = [v for v in seen.values() if v["shop_id"] in safe_set]
     print(f"   조회: 성공 {ok} 실패 {err}{' ⏱️예산초과(부분저장)' if timed_out else ''} | 갱신 {len(safe_ids)}곳 | 빈슬롯 {len(rows)}행 | {time.time()-t0:.0f}초")
 
+    # ── 빈자리 알림용: 삭제 전에 '오늘' 기존 슬롯을 읽어둔다 (새로 생긴 것만 알림) ──
+    # 스크래퍼는 매시간 슬롯을 삭제→재삽입하므로, '새 빈자리'는 직전 상태와의 diff로만 안다.
+    prev_today = set()        # {(shop_id, "HH:MM:SS")}
+    prev_ok_shops = set()     # prev 조회 성공한 샵만 diff 대상(실패 청크는 과알림 방지 위해 제외)
+    for i in range(0, len(safe_ids), 120):
+        ids = safe_ids[i:i+120]
+        chunk = ",".join(str(x) for x in ids)
+        try:
+            _, _, b = sb("GET", f"slots?slot_date=eq.{start_ymd}&shop_id=in.({chunk})&select=shop_id,start_time")
+            for r in json.loads(b):
+                prev_today.add((r["shop_id"], r["start_time"]))
+            prev_ok_shops.update(ids)
+        except Exception:
+            pass
+
     # 슬롯 삭제 (무료티어 statement timeout 회피: 날짜별 + 시간버킷 + 재시도)
     def sb_del(path, tries=4):
         for i in range(tries):
@@ -209,6 +280,25 @@ def main():
         sb("POST", "slots", body=rows[i:i+500], prefer="return=minimal,resolution=merge-duplicates")
         inserted += len(rows[i:i+500])
     print(f"✅ Supabase 저장: {inserted}행 ({start_ymd}~{end_ymd})")
+
+    # ── 저장 후: 새로 생긴 '오늘' 빈자리만 골라 알림 dispatch ──
+    # 한 샵이 한 번에 아주 많이 늘면 취소가 아니라 재적재로 보고 생략(도배 방지).
+    MAX_NEW_PER_SHOP = 8
+    new_by_shop = {}
+    for v in rows:
+        if v["slot_date"] != start_ymd:
+            continue
+        sid = v["shop_id"]
+        if sid not in prev_ok_shops:
+            continue
+        if (sid, v["start_time"]) in prev_today:
+            continue
+        new_by_shop.setdefault(sid, []).append(v["start_time"][:5])  # "14:00:00" → "14:00"
+    new_by_shop = {sid: t for sid, t in new_by_shop.items() if len(t) <= MAX_NEW_PER_SHOP}
+    try:
+        notify_new_slots(new_by_shop, start_ymd)
+    except Exception as e:
+        print(f"   ⚠️ 알림 단계 예외(무시): {e}")
 
     # 상세용 item별 "내일" 빈 시간 요약 → shops.slot_summary 벌크 업서트
     # 같은 이름(디자이너/메뉴)끼리 시간 합치고, 자리 많은 순 top6 · item당 시간 top12
