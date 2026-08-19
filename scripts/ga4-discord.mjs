@@ -61,7 +61,8 @@ const [
   metric('eventCount', { start: '30daysAgo', event: 'reserve_click' }),
   metric('eventCount', { start: '30daysAgo', event: 'shop_view' }),
   top('customEvent:shop_id', 'eventCount', { start: '7daysAgo', event: 'shop_view', limit: 5 }),
-  top('sessionSource', 'sessions', { start: '7daysAgo', limit: 5 }),
+  // 채널 그룹(Direct/Organic Social/Referral…)이 날것 소스보다 읽기 좋음. 노이즈는 아래서 정리
+  top('sessionDefaultChannelGroup', 'sessions', { start: '7daysAgo', limit: 8 }),
 ]);
 
 const convRate = m30Views ? ((m30Reserve / m30Views) * 100).toFixed(1) + '%' : '-';
@@ -81,8 +82,21 @@ try {
 const shopLines = topShops.length
   ? topShops.map((s, i) => `${i + 1}. ${names[s.key] || s.key} — ${s.value.toLocaleString()}회`).join('\n')
   : '데이터 없음';
-const acqLines = acq.length
-  ? acq.map(a => `${a.key} — ${a.value.toLocaleString()}`).join('\n')
+
+// 유입 경로: 미확인/처리중 값은 '미확인'으로 합치고, 채널은 한글 라벨로
+const CHANNEL_KR = {
+  'Direct': '직접 유입', 'Organic Social': '소셜(인스타 등)', 'Referral': '추천 링크',
+  'Organic Search': '검색', 'Paid Social': '소셜 광고', 'Paid Search': '검색 광고',
+  'Unassigned': '미확인', '(not set)': '미확인', '(data not available)': '미확인',
+};
+const acqMap = new Map();
+for (const a of acq) {
+  const label = CHANNEL_KR[a.key] ?? a.key;
+  acqMap.set(label, (acqMap.get(label) ?? 0) + a.value);
+}
+const acqSorted = [...acqMap.entries()].sort((x, y) => y[1] - x[1]).slice(0, 5);
+const acqLines = acqSorted.length
+  ? acqSorted.map(([k, v]) => `${k} — ${v.toLocaleString()}`).join('\n')
   : '데이터 없음';
 
 const embed = {
@@ -93,7 +107,7 @@ const embed = {
     { name: '최근 7일', value: `활성 ${w7Users.toLocaleString()} · 예약클릭 ${w7Reserve.toLocaleString()}`, inline: true },
     { name: '최근 30일', value: `MAU ${m30Users.toLocaleString()} · 예약클릭 ${m30Reserve.toLocaleString()} · 전환율 ${convRate}`, inline: true },
     { name: '인기 샵 Top5 (7일, 상세조회)', value: shopLines, inline: false },
-    { name: '유입 경로 Top5 (7일, 세션)', value: acqLines, inline: false },
+    { name: '유입 채널 Top5 (7일, 세션)', value: acqLines, inline: false },
   ],
   timestamp: new Date().toISOString(),
   footer: { text: 'GA4 Data API' },
