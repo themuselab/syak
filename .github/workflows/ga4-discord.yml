@@ -1,0 +1,30 @@
+name: ga4-discord-report
+
+on:
+  schedule:
+    - cron: "10 23 * * *" # 매일 08:10 KST
+  workflow_dispatch: {}
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # 웹 의존성과 격리해서 @google-analytics/data 만 설치
+      - name: GA4 리포트 → Discord
+        env:
+          GA4_PROPERTY_ID: ${{ secrets.GA4_PROPERTY_ID }}
+          GA4_SA_KEY: ${{ secrets.GA4_SA_KEY }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          mkdir -p /tmp/ga4 && cd /tmp/ga4
+          npm init -y >/dev/null 2>&1
+          npm install @google-analytics/data >/dev/null 2>&1
+          cp "$GITHUB_WORKSPACE/scripts/ga4-discord.mjs" .
+          node ga4-discord.mjs
