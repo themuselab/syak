@@ -5,7 +5,7 @@ import { SupabaseShopRepository } from "../contexts/catalog/infrastructure/supab
 import { makeSearchInBounds, makePinsInBounds, makeSearchByGus, makeGetPartners, makeSearchByName } from "../contexts/catalog/application/search-shops";
 import { makeGetShopDetail } from "../contexts/catalog/application/get-shop-detail";
 
-import { SupabaseAnalyticsSink } from "../contexts/analytics/infrastructure/supabase-analytics-sink";
+import { GA4AnalyticsSink } from "../contexts/analytics/infrastructure/ga4-analytics-sink";
 import { makeTrack } from "../contexts/analytics/application/track";
 
 import { SupabaseLeadRepository } from "../contexts/lead/infrastructure/supabase-lead-repository";
@@ -18,7 +18,9 @@ import { makeGetShopSlots } from "../contexts/reservation/application/get-shop-s
 // ── 어댑터 인스턴스화 (구현 선택) ─────────────────────────
 // 카탈로그: Supabase(PostgREST)에서 뷰포트 기반 조회. 다른 구현은 ShopRepository 포트만 맞추면 교체 가능.
 const shopRepo = new SupabaseShopRepository();
-const analyticsSink = new SupabaseAnalyticsSink(import.meta.env.VITE_TARGET === "vercel" ? "web" : "toss");
+// 분석은 GA4로 이관(Supabase events 적재 중단 → egress 절감).
+// 예전 Supabase 싱크(supabase-analytics-sink.ts)는 참고용으로 남겨둠.
+const analyticsSink = new GA4AnalyticsSink(import.meta.env.VITE_TARGET === "toss" ? "toss" : "web");
 const leadRepo = new SupabaseLeadRepository();
 const slotProvider = new SupabaseSlotProvider(); // 매 정각 배치가 채운 Supabase slots 조회
 
