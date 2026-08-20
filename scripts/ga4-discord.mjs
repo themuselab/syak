@@ -47,7 +47,7 @@ async function top(dimension, metricName, { start, end = 'today', event, limit =
 const YtoD = { start: 'yesterday', end: 'yesterday' };
 
 const [
-  yUsers, ySessions, yReserve,
+  yUsers, ySessions, yReserve, yViews, yDwell,
   w7Users, w7Reserve,
   m30Users, m30Reserve, m30Views,
   topShops, acq,
@@ -55,6 +55,8 @@ const [
   metric('activeUsers', YtoD),
   metric('sessions', YtoD),
   metric('eventCount', { ...YtoD, event: 'reserve_click' }),
+  metric('eventCount', { ...YtoD, event: 'shop_view' }),
+  metric('averageSessionDuration', YtoD), // 평균 체류(초) — 기존 리포트 dwell 대체
   metric('activeUsers', { start: '7daysAgo' }),
   metric('eventCount', { start: '7daysAgo', event: 'reserve_click' }),
   metric('activeUsers', { start: '30daysAgo' }),
@@ -103,7 +105,7 @@ const embed = {
   title: '📊 GA4 일일 리포트 (샥)',
   color: 0xec4899,
   fields: [
-    { name: '어제', value: `활성 ${yUsers.toLocaleString()} · 세션 ${ySessions.toLocaleString()} · 예약클릭 ${yReserve.toLocaleString()}`, inline: false },
+    { name: '어제', value: `활성 ${yUsers.toLocaleString()} · 세션 ${ySessions.toLocaleString()} · 상세조회 ${yViews.toLocaleString()} · 예약클릭 ${yReserve.toLocaleString()} · 평균체류 ${Math.round(yDwell)}초`, inline: false },
     { name: '최근 7일', value: `활성 ${w7Users.toLocaleString()} · 예약클릭 ${w7Reserve.toLocaleString()}`, inline: true },
     { name: '최근 30일', value: `MAU ${m30Users.toLocaleString()} · 예약클릭 ${m30Reserve.toLocaleString()} · 전환율 ${convRate}`, inline: true },
     { name: '인기 샵 Top5 (7일, 상세조회)', value: shopLines, inline: false },
