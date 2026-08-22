@@ -101,6 +101,27 @@ const acqLines = acqSorted.length
   ? acqSorted.map(([k, v]) => `${k} — ${v.toLocaleString()}`).join('\n')
   : '데이터 없음';
 
+// 파트너샵(온보딩 샵) 조회·예약클릭 — 백엔드 internal API (RDS 파트너 집합 × GA4)
+let partner = null;
+try {
+  const base = process.env.API_BASE_URL, key = process.env.INTERNAL_API_KEY;
+  if (base && key) {
+    const pr = await fetch(`${base.replace(/\/$/, '')}/internal/partner-engagement?period=7d`, {
+      headers: { 'X-Internal-Key': key },
+    });
+    if (pr.ok) partner = await pr.json();
+    else console.error('⚠️ 파트너 지표 조회 실패', pr.status);
+  }
+} catch (e) { console.error('⚠️ 파트너 지표 skip', e.message); }
+
+const partnerField = partner ? [{
+  name: '파트너샵 (7일, 조회·예약클릭)',
+  value: `조회 ${Number(partner.views).toLocaleString()} · 예약클릭 ${Number(partner.clicks).toLocaleString()}`
+       + `  ·  파트너 ${partner.partnerCount}개(연동 ${partner.linkedCount})`
+       + (partner.views === 0 && partner.clicks === 0 ? '\n아직 파트너샵으로 유입된 조회·클릭이 없어요' : ''),
+  inline: false,
+}] : [];
+
 const embed = {
   title: '📊 GA4 일일 리포트 (샥)',
   color: 0xec4899,
@@ -110,6 +131,7 @@ const embed = {
     { name: '최근 30일', value: `MAU ${m30Users.toLocaleString()} · 예약클릭 ${m30Reserve.toLocaleString()} · 전환율 ${convRate}`, inline: true },
     { name: '인기 샵 Top5 (7일, 상세조회)', value: shopLines, inline: false },
     { name: '유입 채널 Top5 (7일, 세션)', value: acqLines, inline: false },
+    ...partnerField,
   ],
   timestamp: new Date().toISOString(),
   footer: { text: 'GA4 Data API' },
