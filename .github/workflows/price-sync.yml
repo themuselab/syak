@@ -27,8 +27,8 @@ jobs:
           python-version: "3.11"
       - name: Sync prices ← Naver
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
           PRICE_BATCH: ${{ github.event.inputs.batch || '1500' }}
           PRICE_WORKERS: "3"
           BUDGET_SEC: "600"

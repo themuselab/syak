@@ -24,6 +24,6 @@ jobs:
           python -m playwright install --with-deps chromium
       - name: 파트너 동기화 (사진·가격 재수집)
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
         run: python scraper/sync_partners.py

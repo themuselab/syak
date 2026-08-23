@@ -23,8 +23,10 @@ if _local.exists():
         if "=" in line and not line.strip().startswith("#"):
             k, v = line.split("=", 1)
             ENV.setdefault(k.strip(), v.strip())
-SB_URL = ENV["SUPABASE_URL"].rstrip("/")
-SB_SECRET = ENV.get("SUPABASE_SECRET_KEY") or ENV.get("SUPABASE_SECRET")
+API_BASE = (ENV.get("API_BASE_URL") or "").rstrip("/")
+API_KEY = ENV.get("INTERNAL_API_KEY") or ""
+if not API_BASE or not API_KEY:
+    raise SystemExit("API_BASE_URL/INTERNAL_API_KEY 필요")
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
@@ -58,14 +60,13 @@ def tier(p):
     return "4만원이상"
 
 
-def sb(method, path, body=None, prefer=None):
-    headers = {"apikey": SB_SECRET, "Authorization": f"Bearer {SB_SECRET}", "Content-Type": "application/json"}
-    if prefer:
-        headers["Prefer"] = prefer
-    data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(f"{SB_URL}/rest/v1/{path}", data=data, method=method, headers=headers)
-    with urllib.request.urlopen(req, timeout=40) as r:
-        return r.read()
+def api(method, path, payload=None):
+    """백엔드 internal API (RDS). 반환: 파싱된 JSON."""
+    data = json.dumps(payload).encode() if payload is not None else None
+    headers = {"X-Internal-Key": API_KEY, "Content-Type": "application/json"}
+    req = urllib.request.Request(f"{API_BASE}{path}", data=data, method=method, headers=headers)
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return json.loads(r.read())
 
 
 async def fetch_photos(page, sid, scrolls=5):
@@ -150,13 +151,13 @@ async def sync_one(page, shop):
            "has_event": summary["hasEvent"], "reservable": summary["reservable"],
            "biz_id": biz_id, "item_id": item_id, "detail": detail,
            "is_partner": True, "partner_synced_at": datetime.now(timezone.utc).isoformat()}
-    sb("POST", "shops", body=[row], prefer="resolution=merge-duplicates,return=minimal")
+    api("POST", "/internal/shops/enrich", {"shop": row})
     print(f"  ✅ {summary['name']}: 메뉴 {det.get('menu_count', 0)} · 사진 {len(gallery)+len(review_photos)}장 · 대표가 {mp}", flush=True)
     return True
 
 
 async def main():
-    partners = json.loads(sb("GET", "shops?is_partner=eq.true&partner_synced_at=is.null&select=id,name,gu,category&limit=50"))
+    partners = api("GET", "/internal/shops/partner-unsynced?limit=50").get("partners", [])
     if not partners:
         print("🤝 새로 동기화할 파트너 없음 (모두 최신)")
         return

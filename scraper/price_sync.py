@@ -25,8 +25,10 @@ if _local.exists():
         if "=" in line and not line.strip().startswith("#"):
             k, v = line.split("=", 1)
             ENV.setdefault(k.strip(), v.strip())
-SB_URL = ENV["SUPABASE_URL"].rstrip("/")
-SB_SECRET = ENV["SUPABASE_SECRET_KEY"]
+API_BASE = (ENV.get("API_BASE_URL") or "").rstrip("/")
+API_KEY = ENV.get("INTERNAL_API_KEY") or ""
+if not API_BASE or not API_KEY:
+    raise SystemExit("API_BASE_URL/INTERNAL_API_KEY 필요")
 
 BATCH = int(ENV.get("PRICE_BATCH", "1500"))     # 이번 런에서 시도할 최대 샵 수(시간예산이 더 빨리 끊기도 함)
 WORKERS = int(ENV.get("PRICE_WORKERS", "3"))    # 동시 요청 — 낮게(네이버 throttle 회피)
@@ -82,19 +84,16 @@ def parse_won(s):
     return int(d) if d else None
 
 
-def sb(method, path, body=None, prefer=None, extra_headers=None, tries=4):
-    headers = {"apikey": SB_SECRET, "Authorization": f"Bearer {SB_SECRET}", "Content-Type": "application/json"}
-    if prefer:
-        headers["Prefer"] = prefer
-    if extra_headers:
-        headers.update(extra_headers)
-    data = json.dumps(body).encode() if body is not None else None
+def api(method, path, payload=None, tries=4):
+    """백엔드 internal API (RDS). GET은 payload None."""
+    data = json.dumps(payload).encode() if payload is not None else None
+    headers = {"X-Internal-Key": API_KEY, "Content-Type": "application/json"}
     last = None
     for attempt in range(tries):
         try:
-            req = urllib.request.Request(f"{SB_URL}/rest/v1/{path}", data=data, method=method, headers=headers)
-            with urllib.request.urlopen(req, timeout=60) as r:
-                return r.status, r.headers, r.read()
+            req = urllib.request.Request(f"{API_BASE}{path}", data=data, method=method, headers=headers)
+            with urllib.request.urlopen(req, timeout=120) as r:
+                return json.loads(r.read())
         except urllib.error.HTTPError as e:
             if e.code < 500:
                 raise
@@ -138,10 +137,8 @@ def fetch_menus(shop_id):
 
 
 def load_targets():
-    """가장 오래 안 본 샵부터 BATCH개 (never-synced 우선). detail 있는 샵만."""
-    st, hdr, body = sb("GET", f"shops?detail=not.is.null&select=id,category"
-                              f"&order=price_synced_at.asc.nullsfirst&limit={BATCH}")
-    return json.loads(body)
+    """가장 오래 안 본 샵부터 BATCH개 (never-synced 우선). detail 있는 샵만. (RDS)"""
+    return api("GET", f"/internal/shops/price-targets?limit={BATCH}").get("targets", [])
 
 
 def main():
@@ -175,8 +172,8 @@ def main():
     # 갱신 (min_price/price_tier + 도장). detail.menus는 v2에서 별도 갱신 예정.
     up = 0
     for i in range(0, len(updates), 500):
-        sb("POST", "shops", body=updates[i:i+500], prefer="return=minimal,resolution=merge-duplicates")
-        up += len(updates[i:i+500])
+        r = api("POST", "/internal/shops/prices", {"rows": updates[i:i+500]})
+        up += r.get("updated", len(updates[i:i+500]))
     elapsed = time.time() - t0
     print(f"✅ 갱신 {up}곳 | 성공 {ok} 차단/실패 {blocked} | {elapsed:.0f}초")
     for k in ["1만원대", "2만원대", "3만원대", "4만원이상", "미정"]:
