@@ -65,6 +65,32 @@ def sb(method, path, body=None, prefer=None, extra_headers=None, tries=4):
     raise last
 
 
+def slot_sync(payload):
+    """슬롯을 백엔드 internal API(POST /internal/slots/sync)로 RDS에 동기화.
+    백엔드가 날짜창 교체 + 오늘 신규 슬롯 판정까지 처리. 반환 {inserted, newCount, newSlots}."""
+    base = (ENV.get("API_BASE_URL") or "").rstrip("/")
+    key = ENV.get("INTERNAL_API_KEY") or ""
+    if not base or not key:
+        raise RuntimeError("API_BASE_URL/INTERNAL_API_KEY 미설정 — 슬롯 동기화 불가")
+    url = f"{base}/internal/slots/sync"
+    data = json.dumps(payload).encode()
+    last = None
+    for attempt in range(4):
+        try:
+            req = urllib.request.Request(url, data=data, method="POST",
+                headers={"Content-Type": "application/json", "X-Internal-Key": key})
+            with urllib.request.urlopen(req, timeout=120) as r:
+                return json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            if e.code < 500:
+                raise
+            last = e
+        except Exception as e:
+            last = e
+        time.sleep(2 * (attempt + 1))
+    raise last
+
+
 def notify_new_slots(new_by_shop, slot_date):
     """새로 생긴 '오늘' 빈자리를 백엔드 알림 엔드포인트로 밀어준다.
 
@@ -245,56 +271,22 @@ def main():
     rows = [v for v in seen.values() if v["shop_id"] in safe_set]
     print(f"   조회: 성공 {ok} 실패 {err}{' ⏱️예산초과(부분저장)' if timed_out else ''} | 갱신 {len(safe_ids)}곳 | 빈슬롯 {len(rows)}행 | {time.time()-t0:.0f}초")
 
-    # ── 빈자리 알림용: 삭제 전에 '오늘' 기존 슬롯을 읽어둔다 (새로 생긴 것만 알림) ──
-    # 스크래퍼는 매시간 슬롯을 삭제→재삽입하므로, '새 빈자리'는 직전 상태와의 diff로만 안다.
-    prev_today = set()        # {(shop_id, "HH:MM:SS")}
-    prev_ok_shops = set()     # prev 조회 성공한 샵만 diff 대상(실패 청크는 과알림 방지 위해 제외)
-    for i in range(0, len(safe_ids), 120):
-        ids = safe_ids[i:i+120]
-        chunk = ",".join(str(x) for x in ids)
-        try:
-            _, _, b = sb("GET", f"slots?slot_date=eq.{start_ymd}&shop_id=in.({chunk})&select=shop_id,start_time")
-            for r in json.loads(b):
-                prev_today.add((r["shop_id"], r["start_time"]))
-            prev_ok_shops.update(ids)
-        except Exception:
-            pass
-
-    # 슬롯 삭제 (무료티어 statement timeout 회피: 날짜별 + 시간버킷 + 재시도)
-    def sb_del(path, tries=4):
-        for i in range(tries):
-            try:
-                sb("DELETE", path, prefer="return=minimal"); return True
-            except Exception:
-                time.sleep(2 * (i + 1))
-        return False
-
-    # 성공 샵의 수집창 슬롯만 삭제 (shop_id 청크 + 날짜창) → 부분 차단돼도 다른 샵 데이터 안 건드림
-    for i in range(0, len(safe_ids), 120):
-        chunk = ",".join(str(x) for x in safe_ids[i:i+120])
-        sb_del(f"slots?slot_date=gte.{start_ymd}&slot_date=lte.{end_ymd}&shop_id=in.({chunk})")
-    if SHARD == 0:
-        sb_del(f"slots?slot_date=lt.{start_ymd}")  # 과거 정리 (전역, 작음 — 샤드0만)
-    inserted = 0
-    for i in range(0, len(rows), 500):
-        sb("POST", "slots", body=rows[i:i+500], prefer="return=minimal,resolution=merge-duplicates")
-        inserted += len(rows[i:i+500])
-    print(f"✅ Supabase 저장: {inserted}행 ({start_ymd}~{end_ymd})")
-
-    # ── 저장 후: 새로 생긴 '오늘' 빈자리만 골라 알림 dispatch ──
-    # 한 샵이 한 번에 아주 많이 늘면 취소가 아니라 재적재로 보고 생략(도배 방지).
+    # ── 슬롯을 백엔드 internal API로 RDS에 동기화 (Supabase egress 회피) ──
+    # 백엔드가 날짜창 교체 + '오늘 신규 슬롯' 판정(초기적재 제외)까지 처리한다.
+    # 한 샵이 한 번에 아주 많이 늘면 취소가 아니라 재적재로 보고 알림 생략(도배 방지).
     MAX_NEW_PER_SHOP = 8
+    sync_slots = [{"shopId": str(v["shop_id"]), "date": v["slot_date"], "startTime": v["start_time"][:5]} for v in rows]
+    payload = {"startDate": start_ymd, "endDate": end_ymd,
+               "shopIds": [str(s) for s in safe_ids], "slots": sync_slots}
     new_by_shop = {}
-    for v in rows:
-        if v["slot_date"] != start_ymd:
-            continue
-        sid = v["shop_id"]
-        if sid not in prev_ok_shops:
-            continue
-        if (sid, v["start_time"]) in prev_today:
-            continue
-        new_by_shop.setdefault(sid, []).append(v["start_time"][:5])  # "14:00:00" → "14:00"
-    new_by_shop = {sid: t for sid, t in new_by_shop.items() if len(t) <= MAX_NEW_PER_SHOP}
+    try:
+        resp = slot_sync(payload)
+        print(f"✅ RDS 동기화: {resp.get('inserted', 0)}행 ({start_ymd}~{end_ymd}) · 신규 {resp.get('newCount', 0)}")
+        for ns in resp.get("newSlots", []):
+            new_by_shop.setdefault(str(ns["shopId"]), []).append(str(ns["startTime"])[:5])
+        new_by_shop = {sid: t for sid, t in new_by_shop.items() if len(t) <= MAX_NEW_PER_SHOP}
+    except Exception as e:
+        print(f"   ⚠️ 슬롯 RDS 동기화 실패: {e}")
     try:
         notify_new_slots(new_by_shop, start_ymd)
     except Exception as e:
@@ -323,25 +315,23 @@ def main():
     # 초록핀(today_open)은 별도 가벼운 잡(today-open.yml)이 재계산 — 무거운 수집과 분리(타임아웃 방지)
 
 
+def open_now_shops(date_ymd, now_hms):
+    """지금(date, now 이후) 열린 샵 id 집합 — 백엔드 internal(RDS)에서 조회."""
+    base = (ENV.get("API_BASE_URL") or "").rstrip("/")
+    key = ENV.get("INTERNAL_API_KEY") or ""
+    if not base or not key:
+        raise RuntimeError("API_BASE_URL/INTERNAL_API_KEY 미설정 — open-now 조회 불가")
+    url = f"{base}/internal/slots/open-now?date={date_ymd}&after={now_hms}"
+    req = urllib.request.Request(url, method="GET", headers={"X-Internal-Key": key})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return set(str(s) for s in json.loads(r.read()).get("shopIds", []))
+
+
 def reconcile_today_open(start_ymd, now_hms):
     """차단·교차일로 생긴 묵은 초록핀(거짓양성/음성)을 제거.
-    수집 시각이 아니라 '지금'을 기준으로 slots 테이블을 다시 읽어 델타만 PATCH."""
-    def get_rows(path):
-        _, _, body = sb("GET", path)
-        return json.loads(body)
-
-    # 1) 지금 기준 실제로 열린 샵 (오늘 + start_time>=지금) distinct — keyset 페이지네이션
-    true_open, last = set(), -1
-    while True:
-        rows = get_rows(f"slots?slot_date=eq.{start_ymd}&start_time=gte.{now_hms}"
-                        f"&shop_id=gt.{last}&select=shop_id&order=shop_id&limit=1000")
-        if not rows:
-            break
-        for r in rows:
-            true_open.add(r["shop_id"])
-        last = rows[-1]["shop_id"]
-        if len(rows) < 1000:
-            break
+    슬롯은 RDS(백엔드)에서 '지금 열린 샵'을 받아 delta만 shops.today_open PATCH(Supabase)."""
+    # 1) 지금 기준 실제로 열린 샵 (RDS)
+    true_open = open_now_shops(start_ymd, now_hms)
 
     # 2) 현재 DB에서 true로 저장된 샵
     stored, frm = set(), 0
