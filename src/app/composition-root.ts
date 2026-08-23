@@ -1,28 +1,26 @@
 // 조립(Composition Root) — 포트 ↔ 어댑터를 연결하는 유일한 장소.
 // 나머지 코드는 포트(인터페이스)에만 의존한다. 어댑터 교체는 여기 한 곳만 바꾸면 된다.
 
-import { SupabaseShopRepository } from "../contexts/catalog/infrastructure/supabase-shop-repository";
+import { ApiShopRepository } from "../contexts/catalog/infrastructure/api-shop-repository";
 import { makeSearchInBounds, makePinsInBounds, makeSearchByGus, makeGetPartners, makeSearchByName } from "../contexts/catalog/application/search-shops";
 import { makeGetShopDetail } from "../contexts/catalog/application/get-shop-detail";
 
 import { GA4AnalyticsSink } from "../contexts/analytics/infrastructure/ga4-analytics-sink";
 import { makeTrack } from "../contexts/analytics/application/track";
 
-import { SupabaseLeadRepository } from "../contexts/lead/infrastructure/supabase-lead-repository";
+import { ApiLeadRepository } from "../contexts/lead/infrastructure/api-lead-repository";
 import { makeRegisterAlert } from "../contexts/lead/application/register-alert";
 
-import { SupabaseSlotProvider } from "../contexts/reservation/infrastructure/supabase-slot-provider";
+import { ApiSlotProvider } from "../contexts/reservation/infrastructure/api-slot-provider";
 import { makeFindOpenShops } from "../contexts/reservation/application/find-open-shops";
 import { makeGetShopSlots } from "../contexts/reservation/application/get-shop-slots";
 
 // ── 어댑터 인스턴스화 (구현 선택) ─────────────────────────
-// 카탈로그: Supabase(PostgREST)에서 뷰포트 기반 조회. 다른 구현은 ShopRepository 포트만 맞추면 교체 가능.
-const shopRepo = new SupabaseShopRepository();
-// 분석은 GA4로 이관(Supabase events 적재 중단 → egress 절감).
-// 예전 Supabase 싱크(supabase-analytics-sink.ts)는 참고용으로 남겨둠.
+// 카탈로그/슬롯: 백엔드 API(RDS)에서 조회. Supabase 직접 호출을 이전(egress 정지 회피).
+const shopRepo = new ApiShopRepository();
 const analyticsSink = new GA4AnalyticsSink(import.meta.env.VITE_TARGET === "toss" ? "toss" : "web");
-const leadRepo = new SupabaseLeadRepository();
-const slotProvider = new SupabaseSlotProvider(); // 매 정각 배치가 채운 Supabase slots 조회
+const leadRepo = new ApiLeadRepository();
+const slotProvider = new ApiSlotProvider(); // 백엔드 API → RDS slots(스크래퍼/사장님 통합)
 
 // ── 유스케이스 묶음 (앱 전체가 이걸 통해 도메인 사용) ──────
 export const usecases = {
