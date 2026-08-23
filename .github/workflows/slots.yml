@@ -30,8 +30,6 @@ jobs:
           fi
       - name: Ingest slots → Supabase
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           # 새로 생긴 빈자리를 백엔드 알림으로 밀어줌 (없으면 알림만 skip, 수집은 정상)
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}

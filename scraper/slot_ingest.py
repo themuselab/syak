@@ -27,9 +27,6 @@ if _local.exists():
         if "=" in line and not line.strip().startswith("#"):
             k, v = line.split("=", 1)
             ENV.setdefault(k.strip(), v.strip())
-SB_URL = ENV["SUPABASE_URL"].rstrip("/")
-SB_SECRET = ENV["SUPABASE_SECRET_KEY"]
-
 # 샤딩 — 분할 실행(각 러너 다른 IP/시간, 25분 차단선 안 넘게). 미설정 시 단일.
 SHARD = int(ENV.get("SHARD", "0"))
 NUM_SHARDS = int(ENV.get("NUM_SHARDS", "1"))
@@ -41,27 +38,49 @@ QUERY = ("query hourlySchedule($scheduleParams: ScheduleParams){schedule(input:$
          "{bizItemSchedule{hourly{unitStartTime bookingCount stock isUnitBusinessDay isUnitSaleDay}}}}")
 
 
-def sb(method, path, body=None, prefer=None, extra_headers=None, tries=4):
-    headers = {"apikey": SB_SECRET, "Authorization": f"Bearer {SB_SECRET}", "Content-Type": "application/json"}
-    if prefer:
-        headers["Prefer"] = prefer
-    if extra_headers:
-        headers.update(extra_headers)
-    data = json.dumps(body).encode() if body is not None else None
-    # 일시적 5xx(무료티어 콜드스타트)·네트워크 오류는 재시도. 4xx(쿼리 문제)는 즉시 raise.
+def _api_base_key():
+    base = (ENV.get("API_BASE_URL") or "").rstrip("/")
+    key = ENV.get("INTERNAL_API_KEY") or ""
+    if not base or not key:
+        raise RuntimeError("API_BASE_URL/INTERNAL_API_KEY 미설정")
+    return base, key
+
+
+def api_get(path, tries=4):
+    base, key = _api_base_key()
     last = None
     for attempt in range(tries):
         try:
-            req = urllib.request.Request(f"{SB_URL}/rest/v1/{path}", data=data, method=method, headers=headers)
-            with urllib.request.urlopen(req, timeout=60) as r:
-                return r.status, r.headers, r.read()
+            req = urllib.request.Request(f"{base}{path}", method="GET", headers={"X-Internal-Key": key})
+            with urllib.request.urlopen(req, timeout=120) as r:
+                return json.loads(r.read())
         except urllib.error.HTTPError as e:
             if e.code < 500:
                 raise
             last = e
         except Exception as e:
             last = e
-        time.sleep(1.5 * (attempt + 1))
+        time.sleep(2 * (attempt + 1))
+    raise last
+
+
+def api_post(path, payload, tries=4):
+    base, key = _api_base_key()
+    data = json.dumps(payload).encode()
+    last = None
+    for attempt in range(tries):
+        try:
+            req = urllib.request.Request(f"{base}{path}", data=data, method="POST",
+                headers={"Content-Type": "application/json", "X-Internal-Key": key})
+            with urllib.request.urlopen(req, timeout=180) as r:
+                return json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            if e.code < 500:
+                raise
+            last = e
+        except Exception as e:
+            last = e
+        time.sleep(2 * (attempt + 1))
     raise last
 
 
@@ -113,8 +132,7 @@ def notify_new_slots(new_by_shop, slot_date):
     for i in range(0, len(sids), 200):
         chunk = ",".join(str(x) for x in sids[i:i+200])
         try:
-            _, _, b = sb("GET", f"shops?id=in.({chunk})&select=id,name,lat,lng")
-            for r in json.loads(b):
+            for r in api_get(f"/internal/shops/meta?ids={chunk}").get("shops", []):
                 meta[r["id"]] = r
         except Exception:
             pass
@@ -147,18 +165,9 @@ def notify_new_slots(new_by_shop, slot_date):
 
 
 def load_targets():
-    """biz_id 있는 가게 = 온라인 예약 가능. 페이지네이션.
+    """biz_id 있는 가게 = 온라인 예약 가능. 백엔드 internal API(RDS)에서 타깃 로드.
     item_ids(전 디자이너/서비스) × biz_type 포함."""
-    out, frm = [], 0
-    while True:
-        st, hdr, body = sb("GET", "shops?biz_id=not.is.null&select=id,biz_id,item_id,biz_type,item_ids,items&order=id",
-                           prefer="count=exact", extra_headers={"Range": f"{frm}-{frm+999}"})
-        rows = json.loads(body)
-        out.extend(rows)
-        total = int((hdr.get("content-range") or "/0").split("/")[1] or 0)
-        frm += 1000
-        if frm >= total or not rows:
-            break
+    out = api_get("/internal/shops/targets").get("targets", [])
     if NUM_SHARDS > 1:  # 이 러너 담당 샤드만 (안정적 해시 분할)
         out = [r for r in out if zlib.crc32(str(r["id"]).encode()) % NUM_SHARDS == SHARD]
     return out
@@ -309,59 +318,23 @@ def main():
         sum_rows.append({"id": sid, "slot_summary": items})
     up = 0
     for i in range(0, len(sum_rows), 500):
-        sb("POST", "shops", body=sum_rows[i:i+500], prefer="return=minimal,resolution=merge-duplicates")
-        up += len(sum_rows[i:i+500])
-    print(f"✅ slot_summary 갱신: {up}곳")
+        try:
+            r = api_post("/internal/shops/summary", {"rows": sum_rows[i:i+500]})
+            up += r.get("updated", 0)
+        except Exception as e:
+            print(f"   ⚠️ slot_summary 갱신 실패: {e}")
+    print(f"✅ slot_summary 갱신(RDS): {up}곳")
     # 초록핀(today_open)은 별도 가벼운 잡(today-open.yml)이 재계산 — 무거운 수집과 분리(타임아웃 방지)
 
 
-def open_now_shops(date_ymd, now_hms):
-    """지금(date, now 이후) 열린 샵 id 집합 — 백엔드 internal(RDS)에서 조회."""
-    base = (ENV.get("API_BASE_URL") or "").rstrip("/")
-    key = ENV.get("INTERNAL_API_KEY") or ""
-    if not base or not key:
-        raise RuntimeError("API_BASE_URL/INTERNAL_API_KEY 미설정 — open-now 조회 불가")
-    url = f"{base}/internal/slots/open-now?date={date_ymd}&after={now_hms}"
-    req = urllib.request.Request(url, method="GET", headers={"X-Internal-Key": key})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return set(str(s) for s in json.loads(r.read()).get("shopIds", []))
-
-
 def reconcile_today_open(start_ymd, now_hms):
-    """차단·교차일로 생긴 묵은 초록핀(거짓양성/음성)을 제거.
-    슬롯은 RDS(백엔드)에서 '지금 열린 샵'을 받아 delta만 shops.today_open PATCH(Supabase)."""
-    # 1) 지금 기준 실제로 열린 샵 (RDS)
-    true_open = open_now_shops(start_ymd, now_hms)
-
-    # 2) 현재 DB에서 true로 저장된 샵
-    stored, frm = set(), 0
-    while True:
-        _, _, body = sb("GET", "shops?today_open=eq.true&select=id&order=id",
-                        extra_headers={"Range": f"{frm}-{frm+999}"})
-        rows = json.loads(body)
-        if not rows:
-            break
-        for r in rows:
-            stored.add(r["id"])
-        frm += 1000
-        if len(rows) < 1000:
-            break
-
-    # 3) 바뀐 것만 PATCH (대부분 그대로 → 쓰기 최소화)
-    to_true, to_false = list(true_open - stored), list(stored - true_open)
-
-    def patch(ids, val):
-        for i in range(0, len(ids), 200):
-            chunk = ",".join(str(x) for x in ids[i:i+200])
-            sb("PATCH", f"shops?id=in.({chunk})", body={"today_open": val}, prefer="return=minimal")
-
-    patch(to_true, True)
-    patch(to_false, False)
-    print(f"🟢 today_open 재계산: 열림 {len(true_open)}곳 (+{len(to_true)} / -{len(to_false)})")
+    """초록핀(today_open) 재계산을 백엔드(RDS)에 위임 — 슬롯/샵 모두 RDS에서 처리."""
+    r = api_post("/internal/shops/reconcile-today-open", {"date": start_ymd, "after": now_hms})
+    print(f"🟢 today_open 재계산(RDS): 열림 {r.get('open', 0)}곳 (변경 {r.get('changed', 0)})")
 
 
 def reconcile_main():
-    """초록핀만 재계산하는 경량 진입점(today-open.yml용). 네이버 호출 없음 — Supabase만."""
+    """초록핀만 재계산하는 경량 진입점(today-open.yml용). 네이버 호출 없음 — RDS만."""
     kst = timezone(timedelta(hours=9))
     now = datetime.now(kst)
     reconcile_today_open(now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"))

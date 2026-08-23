@@ -1,6 +1,6 @@
 name: today-open-refresh
 
-# 초록핀(today_open) 재계산 전용 — 네이버 호출 없이 Supabase slots + 현재시각만.
+# 초록핀(today_open) 재계산 전용 — 네이버 호출 없이 백엔드(RDS) 재계산만.
 # 무거운 slot-ingest와 분리해 타임아웃/차단과 무관하게 자주 돌린다.
 on:
   schedule:
@@ -22,6 +22,6 @@ jobs:
           python-version: "3.11"
       - name: Recompute today_open
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
         run: python scraper/slot_ingest.py reconcile
