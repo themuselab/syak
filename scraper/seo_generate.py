@@ -70,12 +70,62 @@ def api(path):
         return json.loads(r.read())
 
 
+SIDO_PREFIX = ("서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종",
+               "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주")
+
+
+def short_road(road):
+    # "서울 강남구 강남대로118길 7 3층" → "강남구 강남대로118길 7" (시도 접두·층/호 제거)
+    if not road:
+        return None
+    parts = road.split()
+    if parts and any(parts[0].startswith(p) for p in SIDO_PREFIX):
+        parts = parts[1:]
+    # 층/호/상세 꼬리 제거
+    out = []
+    for t in parts:
+        if any(x in t for x in ("층", "호", "지하", "B1", "빌딩", "타워")):
+            break
+        out.append(t)
+    return " ".join(out[:3]) or None
+
+
 def to_shop(s):
-    # api/seo.js 가 쓰는 짧은 키로 압축. (name, tier, min, rv, today, ev, fv)
-    return {"name": s["name"], "tier": s.get("price_tier") or "",
-            "min": s.get("min_price"), "rv": s.get("review_count"),
-            "today": bool(s.get("today_open")),
-            "ev": bool(s.get("has_event")), "fv": bool(s.get("first_visit_deal"))}
+    # api/seo.js 가 쓰는 짧은 키로 압축. (name, tier, min, rv, today, ev, fv, road, m)
+    out = {"name": s["name"], "tier": s.get("price_tier") or "",
+           "min": s.get("min_price"), "rv": s.get("review_count"),
+           "today": bool(s.get("today_open")),
+           "ev": bool(s.get("has_event")), "fv": bool(s.get("first_visit_deal"))}
+    road = short_road(s.get("road"))
+    if road:
+        out["road"] = road
+    menus = s.get("menus") or []
+    if menus:  # 대표 실시술(최저가) 1개
+        out["m"] = {"n": menus[0]["n"], "p": menus[0]["p"]}
+    return out
+
+
+def pop_menus(shops):
+    # 지역 대표 시술: 샵들의 실시술을 이름별 최저가로 dedupe 후, 저가~고가를
+    # 고르게 8개 샘플링(전부 최저가 케어류로 쏠리는 것 방지 → 실제 가격 스펙트럼).
+    seen = {}
+    for s in shops:
+        for m in (s.get("menus") or []):
+            nm = (m.get("n") or "").strip()
+            p = m.get("p")
+            if not nm or not p:
+                continue
+            key = nm.replace(" ", "")
+            if key not in seen or p < seen[key][1]:
+                seen[key] = (nm, p)
+    ranked = sorted(seen.values(), key=lambda x: x[1])
+    if len(ranked) <= 8:
+        picks = ranked
+    else:
+        # 정렬 리스트에서 균등 간격으로 8개 (가격 스펙트럼)
+        idx = sorted(set(round(i * (len(ranked) - 1) / 7) for i in range(8)))
+        picks = [ranked[i] for i in idx]
+    return [{"n": nm, "p": p} for nm, p in picks]
 
 
 def main():
@@ -96,7 +146,11 @@ def main():
             shops = buckets.get((ko, gu), [])
             if len(shops) < MIN_SHOPS:
                 continue
-            data[gu] = {"shops": [to_shop(s) for s in shops]}
+            entry = {"shops": [to_shop(s) for s in shops]}
+            pm = pop_menus(shops)
+            if pm:
+                entry["pop"] = pm
+            data[gu] = entry
             order.append(gu)
 
         # 생활권(일산 등) — 네일만. 상위 행정구 샵을 이름 토큰으로 추려 별도 키워드 페이지.
@@ -108,6 +162,9 @@ def main():
                     print(f"    · {label}: {len(sub)}곳(생략)")
                     continue
                 entry = {"linkGu": cfg["gu"], "shops": [to_shop(s) for s in sub]}
+                pm = pop_menus(sub)
+                if pm:
+                    entry["pop"] = pm
                 if cfg.get("dongs"):
                     entry["dongs"] = cfg["dongs"]
                 if cfg.get("nearby"):

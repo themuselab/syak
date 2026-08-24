@@ -58,6 +58,22 @@ function render(cat, gu, entry, catData, nowIso, freshLabel) {
   const low = prices.length ? won(prices[0]) : "—";
   const mid = prices.length ? won(prices[Math.floor(prices.length / 2)]) : "—";
 
+  // 가격대 분포(실 데이터) — 유니크 콘텐츠
+  const BANDS = ["1만원대", "2만원대", "3만원대", "4만원이상"];
+  const bandCount = {};
+  for (const s of shops) if (s.tier) bandCount[s.tier] = (bandCount[s.tier] || 0) + 1;
+  const bandHtml = BANDS.filter((b) => bandCount[b]).map((b) => {
+    const c = bandCount[b], pct = Math.round((c / n) * 100);
+    return `<div class="bar"><span class="bl">${b}</span><span class="bt"><i style="width:${pct}%"></i></span><span class="bn">${c}곳</span></div>`;
+  }).join("");
+
+  // 지역 인기·대표 시술(실제 메뉴 가격)
+  const pop = entry.pop || [];
+  const popHtml = pop.length
+    ? `<h2>${esc(gu)} ${esc(place)} 인기·대표 시술 가격</h2>` +
+      `<ul class="menus">${pop.map((m) => `<li><span>${esc(m.n)}</span><b>${esc(won(m.p))}~</b></li>`).join("")}</ul>`
+    : "";
+
   const title = `${gu} ${place} 추천 · 당일 예약 가능 가격비교 (${freshLabel}) | 샥`;
   const desc =
     `${gu} ${place} ${n}곳의 대표가격과 당일 예약 가능 여부를 한눈에. ` +
@@ -73,11 +89,14 @@ function render(cat, gu, entry, catData, nowIso, freshLabel) {
     if (s.fv) badges.push('<span class="b pink">첫방문 할인</span>');
     const price = won(s.min) || "가격문의";
     const rv = s.rv ? ` · 리뷰 ${Number(s.rv).toLocaleString("en-US")}` : "";
+    const menuLine = s.m ? `<div class="mn">${esc(s.m.n)} ${esc(won(s.m.p))}~</div>` : "";
+    const roadLine = s.road ? `<div class="rd">📍 ${esc(s.road)}</div>` : "";
     cards.push(
       `<li class="card"><a href="${deepLink(lg, cat, gu)}" rel="nofollow" ` +
         `onclick="gtag('event','seo_cta_click',{category:'${cat}',region:${JSON.stringify(gu)},placement:'card'})">` +
         `<div class="nm">${esc(s.name)}</div>` +
         `<div class="meta">${esc(s.tier || "")} · ${esc(price)}~${rv}</div>` +
+        menuLine + roadLine +
         `<div class="badges">${badges.join("")}</div></a></li>`
     );
     itemsLd.push({
@@ -140,6 +159,15 @@ function render(cat, gu, entry, catData, nowIso, freshLabel) {
     speakable: { "@type": "SpeakableSpecification", cssSelector: [".tldr", ".faq"] },
     isPartOf: { "@type": "WebSite", name: "샥", url: `${SITE}/` },
   };
+  const offerLd = pop.length ? {
+    "@context": "https://schema.org", "@type": "OfferCatalog", name: `${gu} ${place} 시술 가격`,
+    itemListElement: pop.map((m) => ({
+      "@type": "Offer", priceCurrency: "KRW", price: m.p,
+      itemOffered: { "@type": "Service", name: m.n, areaServed: gu },
+    })),
+  } : null;
+  const offerScript = offerLd
+    ? `<script type="application/ld+json">${JSON.stringify(offerLd)}</script>` : "";
 
   const gaSnippet =
     `<script async src="https://www.googletagmanager.com/gtag/js?id=${GA_ID}"></script>` +
@@ -175,6 +203,7 @@ ${gaSnippet}
 <script type="application/ld+json">${JSON.stringify(bcLd)}</script>
 <script type="application/ld+json">${JSON.stringify(faqLd)}</script>
 <script type="application/ld+json">${JSON.stringify(pageLd)}</script>
+${offerScript}
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;color:#222;background:#fff;line-height:1.5}
 .wrap{max-width:680px;margin:0 auto;padding:20px 16px 60px}
@@ -187,6 +216,9 @@ h2{font-size:17px;margin:26px 0 6px}
 .tabs{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 4px}.tab{font-size:13px;font-weight:700;padding:6px 12px;border-radius:999px;background:#f4f4f5;color:#555;text-decoration:none}.tab.on{background:#ec4899;color:#fff}
 ul{list-style:none;padding:0;margin:0}.card{border-top:1px solid #f1f1f3}.card a{display:block;padding:12px 2px;text-decoration:none;color:inherit}
 .nm{font-weight:700;font-size:15px}.meta{font-size:13px;color:#666;margin-top:2px}
+.mn{font-size:12px;color:#ec4899;margin-top:3px;font-weight:600}.rd{font-size:12px;color:#999;margin-top:2px}
+.bars{margin:6px 0 2px}.bar{display:flex;align-items:center;gap:8px;margin:5px 0}.bl{font-size:12px;color:#555;width:64px}.bt{flex:1;height:8px;background:#f1f1f3;border-radius:6px;overflow:hidden}.bt i{display:block;height:100%;background:#ec4899;border-radius:6px}.bn{font-size:12px;color:#888;width:34px;text-align:right}
+.menus{margin:6px 0}.menus li{display:flex;justify-content:space-between;gap:12px;border-top:1px solid #f4f4f5;padding:9px 2px;font-size:14px}.menus span{color:#333}.menus b{color:#ec4899;white-space:nowrap}
 .badges{margin-top:6px;display:flex;gap:5px;flex-wrap:wrap}.b{font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px}
 .b.green{background:#e7f7ee;color:#16a34a}.b.pink{background:#fde8f1;color:#ec4899}
 .area{font-size:13px;color:#555;line-height:1.9;margin:6px 0 0}.area a{color:#ec4899;text-decoration:none;font-weight:600}
@@ -207,10 +239,12 @@ ${tldr}
 <div class="stat"><b>${today}</b><span>오늘 예약</span></div>
 <div class="stat"><b>${deal}</b><span>할인·첫방문</span></div>
 </div>
+${bandHtml ? `<h2>${esc(gu)} ${esc(place)} 가격대 분포</h2><div class="bars">${bandHtml}</div>` : ""}
 ${cta(lg, cat, gu, "cta_top", "cta", `샥에서 ${esc(gu)} 빈자리 보기 →`)}
 <h2>${esc(gu)} ${esc(place)} 목록</h2>
 <ul>${cards.join("")}</ul>
 ${cta(lg, cat, gu, "cta_bottom", "cta", "지금 예약 가능한 곳 지도로 보기 →")}
+${popHtml}
 <h2>자주 묻는 질문</h2>
 <dl class="faq">${faqHtml}</dl>
 <div class="links"><b style="color:#666">다른 지역 ${esc(label)}</b><br>${links}</div>
