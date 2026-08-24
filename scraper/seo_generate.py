@@ -1,34 +1,39 @@
-"""프로그래매틱 SEO 데이터 생성 (단일 함수 렌더링용).
+"""프로그래매틱 SEO 데이터 생성 (멀티카테고리, RDS 백엔드 기반).
 
-지역별 '당일 예약 네일샵' 데이터를 api/regions.json 한 파일로 생성.
-- 예전엔 지역 수만큼 정적 HTML(public/nail/{지역}/index.html)을 만들었으나,
-  이제는 데이터만 내보내고 HTML은 요청 시 api/nail.js 가 렌더한다(단일 템플릿).
-- SPA(Vite)는 클라 렌더라 SEO가 안 되므로, /nail/:gu 는 서버리스 함수가 완성된 HTML로 응답.
-- 데이터(전국 네일 가격·할인·당일예약)를 그대로 콘텐츠화 → 고의도 롱테일 검색 포착.
-- sitemap.xml + robots.txt 도 생성.
+지역×카테고리별 '당일 예약' 데이터를 api/regions.json 한 파일로 생성.
+- 데이터 소스: 백엔드 internal API GET /internal/shops/seo (RDS). Supabase 이전 완료.
+- HTML은 요청 시 api/seo.js 가 렌더(단일 템플릿, /{cat}/{gu}). SPA는 클라렌더라 SEO 불가.
+- sitemap/robots 는 정적 생성 안 함(동적 api/sitemap.js + 소스관리 public/robots.txt).
 
-실행: python seo_generate.py   (scraper/.env의 Supabase 키 사용)
+실행: python seo_generate.py   (scraper/.env 의 API_BASE_URL, INTERNAL_API_KEY 사용)
 """
-import json, sys, urllib.request, urllib.parse
+import json, os, sys, urllib.request, urllib.parse
+from collections import defaultdict
 from pathlib import Path
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
-ENV = {}
-for line in (Path(__file__).parent / ".env").read_text(encoding="utf-8").splitlines():
-    if "=" in line and not line.strip().startswith("#"):
-        k, v = line.split("=", 1)
-        ENV[k.strip()] = v.strip()
-SB_URL = ENV["SUPABASE_URL"].rstrip("/")
-SB_KEY = ENV["SUPABASE_SECRET_KEY"]
+ENV = dict(os.environ)
+_local = Path(__file__).parent / ".env"
+if _local.exists():
+    for line in _local.read_text(encoding="utf-8").splitlines():
+        if "=" in line and not line.strip().startswith("#"):
+            k, v = line.split("=", 1)
+            ENV.setdefault(k.strip(), v.strip())
+API_BASE = (ENV.get("API_BASE_URL") or "").rstrip("/")
+API_KEY = ENV.get("INTERNAL_API_KEY") or ""
+if not API_BASE or not API_KEY:
+    raise SystemExit("API_BASE_URL / INTERNAL_API_KEY 필요 (scraper/.env)")
 
 SITE = "https://www.themuselab.kr"
 ROOT = Path(__file__).resolve().parents[1]
-PUBLIC = ROOT / "public"
 API = ROOT / "api"
 MIN_SHOPS = 5   # 이보다 적으면 페이지 안 만듦(thin content 방지)
 TOP_N = 40      # 페이지당 표시 샵 수
+
+# 카테고리: RDS category(한글) → URL 슬러그(영문). api/_categories.js 와 동일하게 유지.
+CATEGORIES = {"네일": "nail", "헤어": "hair", "왁싱": "waxing", "속눈썹": "eyelash"}
 
 # 지역 목록 (category.ts와 동일)
 SEOUL_GU = ["강남구","강동구","강북구","강서구","관악구","광진구","구로구","금천구","노원구","도봉구","동대문구","동작구","마포구","서대문구","서초구","성동구","성북구","송파구","양천구","영등포구","용산구","은평구","종로구","중구","중랑구"]
@@ -49,9 +54,7 @@ REGIONS = (SEOUL_GU + GYEONGGI_SI + INCHEON_GU + BUSAN_GU + DAEGU_GU + GWANGJU_G
            + DAEJEON_GU + ULSAN_GU + SEJONG_SI + GYEONGSANG_SI + JEOLLA_SI
            + GANGWON_SI + CHUNGCHEONG_SI + JEJU_SI)
 
-# 생활권(洞 단위 브랜드 검색어) 전용 페이지.
-# 사람들은 행정구("고양시")가 아니라 생활권("일산")으로 검색한다 → 별도 랜딩으로 노출 포착.
-# 상위 행정구(gu) 샵 중 이름에 tokens가 포함된 샵만 추려 thin-content 없이 정직하게 구성.
+# 생활권(洞 단위 브랜드 검색어) 전용 페이지 — 네일에만 적용.
 SAENGGWON = {
     "일산": {"gu": "고양시",
              "tokens": ["일산", "주엽", "정발산", "백석", "장항", "마두", "대화", "탄현", "킨텍스", "풍동", "식사", "중산"],
@@ -60,72 +63,68 @@ SAENGGWON = {
 }
 
 
-def sb_get(path):
-    req = urllib.request.Request(f"{SB_URL}/rest/v1/{path}",
-        headers={"apikey": SB_KEY, "Authorization": f"Bearer {SB_KEY}"})
-    with urllib.request.urlopen(req, timeout=30) as r:
+def api(path):
+    req = urllib.request.Request(f"{API_BASE}{path}", headers={"X-Internal-Key": API_KEY})
+    with urllib.request.urlopen(req, timeout=180) as r:
         return json.loads(r.read())
 
 
-def fetch_gu(gu):
-    nail = urllib.parse.quote("네일")
-    return sb_get(f"shops?category=eq.{nail}&gu=eq.{urllib.parse.quote(gu)}"
-                  f"&select=id,name,min_price,price_tier,has_event,first_visit_deal,today_open,review_count"
-                  f"&order=review_count.desc.nullslast&limit={TOP_N}")
-
-
 def to_shop(s):
-    # api/nail.js 가 쓰는 짧은 키로 압축. (name, tier, min, rv, today, ev, fv)
+    # api/seo.js 가 쓰는 짧은 키로 압축. (name, tier, min, rv, today, ev, fv)
     return {"name": s["name"], "tier": s.get("price_tier") or "",
             "min": s.get("min_price"), "rv": s.get("review_count"),
             "today": bool(s.get("today_open")),
             "ev": bool(s.get("has_event")), "fv": bool(s.get("first_visit_deal"))}
 
 
-def slug(gu):
-    return urllib.parse.quote(gu.replace(" ", "-"))
-
-
 def main():
-    data, order, saeng = {}, [], []
+    cats_ko = ",".join(CATEGORIES.keys())
+    resp = api(f"/internal/shops/seo?categories={urllib.parse.quote(cats_ko)}&topn={TOP_N}")
+    rows = resp.get("shops", [])
+    print(f"📥 RDS에서 {len(rows)}행 수신 ({len(CATEGORIES)}개 카테고리)")
 
-    for gu in REGIONS:
-        rows = fetch_gu(gu)
-        if len(rows) < MIN_SHOPS:
-            continue
-        data[gu] = {"linkGu": None, "shops": [to_shop(s) for s in rows]}
-        order.append(gu)
-        print(f"  ✓ {gu}: {len(rows)}곳")
+    # (category_ko, gu) 로 버킷팅
+    buckets = defaultdict(list)
+    for s in rows:
+        buckets[(s.get("category"), s.get("gu"))].append(s)
 
-    # 생활권(예: 일산) — 상위 행정구 샵을 이름 토큰으로 추려 별도 키워드 페이지.
-    for label, cfg in SAENGGWON.items():
-        rows = [s for s in fetch_gu(cfg["gu"])
-                if any(t in (s.get("name") or "") for t in cfg["tokens"])]
-        if len(rows) < MIN_SHOPS:
-            print(f"  · {label}: {len(rows)}곳(생략, <{MIN_SHOPS})")
-            continue
-        entry = {"linkGu": cfg["gu"], "shops": [to_shop(s) for s in rows]}
-        if cfg.get("dongs"):
-            entry["dongs"] = cfg["dongs"]
-        if cfg.get("nearby"):
-            entry["nearby"] = cfg["nearby"]
-        data[label] = entry
-        saeng.append(label)
-        print(f"  ✓ {label}(생활권/{cfg['gu']}): {len(rows)}곳")
+    categories_out = {}
+    for ko, cat in CATEGORIES.items():
+        data, order, saeng = {}, [], []
+        for gu in REGIONS:
+            shops = buckets.get((ko, gu), [])
+            if len(shops) < MIN_SHOPS:
+                continue
+            data[gu] = {"shops": [to_shop(s) for s in shops]}
+            order.append(gu)
 
-    # api/regions.json — 단일 렌더 함수(api/nail.js)가 읽는 데이터 소스
+        # 생활권(일산 등) — 네일만. 상위 행정구 샵을 이름 토큰으로 추려 별도 키워드 페이지.
+        if cat == "nail":
+            for label, cfg in SAENGGWON.items():
+                parent = buckets.get((ko, cfg["gu"]), [])
+                sub = [s for s in parent if any(t in (s.get("name") or "") for t in cfg["tokens"])]
+                if len(sub) < MIN_SHOPS:
+                    print(f"    · {label}: {len(sub)}곳(생략)")
+                    continue
+                entry = {"linkGu": cfg["gu"], "shops": [to_shop(s) for s in sub]}
+                if cfg.get("dongs"):
+                    entry["dongs"] = cfg["dongs"]
+                if cfg.get("nearby"):
+                    entry["nearby"] = cfg["nearby"]
+                data[label] = entry
+                saeng.append(label)
+
+        categories_out[cat] = {"order": order, "saenggwon": saeng, "data": data}
+        print(f"  ✓ {ko}({cat}): {len(order)}지역{' +생활권 '+str(len(saeng)) if saeng else ''}")
+
     API.mkdir(parents=True, exist_ok=True)
+    out = {"site": SITE, "categories": categories_out}
     (API / "regions.json").write_text(
-        json.dumps({"site": SITE, "order": order, "saenggwon": saeng, "data": data},
-                   ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+        json.dumps(out, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
 
-    # sitemap.xml / robots.txt 는 더 이상 정적 생성하지 않는다.
-    #  - sitemap: 동적 서버리스 api/sitemap.js 가 regions.json에서 영문 슬러그 URL 생성
-    #  - robots: public/robots.txt(소스 관리, AI 크롤러 허용 포함)
-    # (예전엔 여기서 한글 슬러그 정적 sitemap.xml + robots.txt를 썼음 → 동적/영문으로 이전)
-
-    print(f"\n✅ regions.json({len(order)}지역+{len(saeng)}생활권) 생성 (sitemap은 동적 api/sitemap.js)")
-    print(f"   → {API/'regions.json'}")
+    total = sum(len(c["data"]) for c in categories_out.values())
+    print(f"\n✅ regions.json 생성: {len(categories_out)}카테고리 · 총 {total}페이지 (sitemap은 동적 api/sitemap.js)")
+    print(f"   → {API / 'regions.json'}")
 
 
 if __name__ == "__main__":

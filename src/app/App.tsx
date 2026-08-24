@@ -145,10 +145,18 @@ export default function App() {
     });
   }, []);
 
-  // SEO 랜딩(/nail/{지역})에서 ?gu= 달고 들어오면 그 지역으로 바로 진입
+  // SEO 랜딩(/{cat}/{지역})에서 ?gu=&cat= 달고 들어오면 지역+카테고리로 바로 진입
   useEffect(() => {
-    const gu = new URLSearchParams(window.location.search).get("gu");
-    if (gu) selectRegions([gu]);
+    const p = new URLSearchParams(window.location.search);
+    const gu = p.get("gu");
+    const cat = p.get("cat"); // 한글 카테고리(네일/헤어/왁싱/속눈썹)
+    if (gu || cat) {
+      setFilter({
+        ...filter,
+        ...(gu ? { gus: [gu] } : {}),
+        ...(cat ? { categories: [cat] } : {}),
+      });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
