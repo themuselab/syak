@@ -51,6 +51,7 @@ const [
   w7Users, w7Reserve,
   m30Users, m30Reserve, m30Views,
   topShops, acq,
+  ySeoLand, ySeoCta, w7SeoLand, w7SeoCta, topSeoPages,
 ] = await Promise.all([
   metric('activeUsers', YtoD),
   metric('sessions', YtoD),
@@ -65,6 +66,12 @@ const [
   top('customEvent:shop_id', 'eventCount', { start: '7daysAgo', event: 'shop_view', limit: 5 }),
   // 채널 그룹(Direct/Organic Social/Referral…)이 날것 소스보다 읽기 좋음. 노이즈는 아래서 정리
   top('sessionDefaultChannelGroup', 'sessions', { start: '7daysAgo', limit: 8 }),
+  // SEO 유입 퍼널 (지역 랜딩 페이지)
+  metric('eventCount', { ...YtoD, event: 'seo_landing' }),
+  metric('eventCount', { ...YtoD, event: 'seo_cta_click' }),
+  metric('eventCount', { start: '7daysAgo', event: 'seo_landing' }),
+  metric('eventCount', { start: '7daysAgo', event: 'seo_cta_click' }),
+  top('pagePath', 'eventCount', { start: '7daysAgo', event: 'seo_landing', limit: 10 }),
 ]);
 
 const convRate = m30Views ? ((m30Reserve / m30Views) * 100).toFixed(1) + '%' : '-';
@@ -124,6 +131,30 @@ const partnerField = partner ? [{
   inline: false,
 }] : [];
 
+// SEO 유입 퍼널: 지역 랜딩(seo_landing) → 앱 진입(seo_cta_click). "어디로 들어오는지"
+const CAT_KR = { nail: '네일', hair: '헤어', waxing: '왁싱', eyelash: '속눈썹', pmu: '반영구', massage: '마사지', skincare: '피부', tanning: '태닝' };
+const catAgg = new Map();
+const seoPageRows = [];
+for (const p of topSeoPages) {
+  const m = /^\/([a-z]+)(?:\/([a-z-]+))?\/?$/.exec(p.key || '');
+  if (!m || !CAT_KR[m[1]]) continue;
+  const cat = CAT_KR[m[1]];
+  catAgg.set(cat, (catAgg.get(cat) ?? 0) + p.value);
+  if (m[2]) seoPageRows.push({ label: `${cat} ${m[2]}`, v: p.value });
+}
+const seoCtr = w7SeoLand ? ((w7SeoCta / w7SeoLand) * 100).toFixed(1) + '%' : '-';
+const catLine = [...catAgg.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v.toLocaleString()}`).join(' · ') || '-';
+const seoPagesLine = seoPageRows.length
+  ? seoPageRows.slice(0, 5).map((r, i) => `${i + 1}. ${r.label} — ${r.v.toLocaleString()}`).join('\n')
+  : '아직 지역 페이지 유입이 없어요';
+const seoField = {
+  name: '🔎 SEO 유입 퍼널 (지역 랜딩)',
+  value: `어제: 랜딩 ${ySeoLand.toLocaleString()} · CTA클릭 ${ySeoCta.toLocaleString()}\n`
+       + `7일: 랜딩 ${w7SeoLand.toLocaleString()} · CTA클릭 ${w7SeoCta.toLocaleString()} · 랜딩→클릭 ${seoCtr}\n`
+       + `카테고리(7일): ${catLine}\n인기 유입 페이지(7일):\n${seoPagesLine}`,
+  inline: false,
+};
+
 const embed = {
   title: '📊 GA4 일일 리포트 (샥)',
   color: 0xec4899,
@@ -132,6 +163,7 @@ const embed = {
     { name: '최근 7일', value: `활성 ${w7Users.toLocaleString()} · 예약클릭 ${w7Reserve.toLocaleString()}`, inline: true },
     { name: '최근 30일', value: `MAU ${m30Users.toLocaleString()} · 예약클릭 ${m30Reserve.toLocaleString()} · 전환율 ${convRate}`, inline: true },
     { name: '인기 샵 Top5 (7일, 상세조회)', value: shopLines, inline: false },
+    seoField,
     { name: '유입 채널 Top5 (7일, 세션)', value: acqLines, inline: false },
     ...partnerField,
   ],

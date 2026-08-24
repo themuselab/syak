@@ -17,6 +17,8 @@ export default function handler(_req, res) {
   for (const cat of CAT_SLUGS) {
     const c = CATS[cat];
     if (!c || !c.data) continue;
+    // 카테고리 허브(/{cat}/) — 지역 페이지보다 상위 우선순위
+    urls.push(`<url><loc>${SITE}/${cat}/</loc><lastmod>${now}</lastmod><priority>0.9</priority><changefreq>daily</changefreq></url>`);
     const seoul = new Set((c.order || []).slice(0, 25));
     for (const gu of Object.keys(c.data)) {
       const sl = slugFor(gu);

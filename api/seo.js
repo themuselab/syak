@@ -247,13 +247,69 @@ ${cta(lg, cat, gu, "cta_bottom", "cta", "지금 예약 가능한 곳 지도로 �
 ${popHtml}
 <h2>자주 묻는 질문</h2>
 <dl class="faq">${faqHtml}</dl>
-<div class="links"><b style="color:#666">다른 지역 ${esc(label)}</b><br>${links}</div>
+<div class="links"><b style="color:#666">다른 지역 ${esc(label)}</b> · <a href="/${cat}/" style="color:#ec4899;font-weight:600">전국 ${esc(place)} 전체보기</a><br>${links}</div>
+<footer>샥(syak) · 지금 예약 되는 동네 뷰티샵 · <a href="${SITE}" style="color:#aaa">themuselab.kr</a></footer>
+</div></body></html>`;
+}
+
+// 카테고리 허브(/{cat}/) — 전 지역 링크 모음. 내부링크 그래프 강화(색인율↑).
+function renderHub(cat, catData, nowIso, freshLabel) {
+  const info = CATEGORIES[cat];
+  const place = info.place, label = info.ko;
+  const order = (catData.order || []).filter((g) => catData.data[g]);
+  const nRegion = order.length;
+  const totalShops = order.reduce((a, g) => a + ((catData.data[g].shops || []).length), 0);
+  const url = `${SITE}/${cat}/`;
+  const title = `${place} 추천 · 전국 지역별 당일 예약 가격비교 (${freshLabel}) | 샥`;
+  const desc = `전국 ${nRegion}개 지역 ${place}의 당일 예약 가능 여부와 대표가격을 한눈에. 우리 동네 ${place} 실시간 빈자리를 샥에서 바로 확인하세요.`;
+  const regionLinks = order.map((g) => `<a href="/${cat}/${slugOf(g)}/">${esc(g)} ${esc(label)}</a>`).join(" · ");
+  const crossHub = Object.keys(CATEGORIES)
+    .filter((c) => c !== cat && CATS[c])
+    .map((c) => `<a class="tab" href="/${c}/">${esc(CATEGORIES[c].place)}</a>`).join("");
+  const pageLd = {
+    "@context": "https://schema.org", "@type": "CollectionPage",
+    name: title, url, inLanguage: "ko-KR", dateModified: nowIso, description: desc,
+    isPartOf: { "@type": "WebSite", name: "샥", url: `${SITE}/` },
+  };
+  const gaSnippet =
+    `<script async src="https://www.googletagmanager.com/gtag/js?id=${GA_ID}"></script>` +
+    `<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}` +
+    `gtag('js',new Date());gtag('config','${GA_ID}');` +
+    `gtag('event','seo_landing',{page_type:'seo_hub',category:'${cat}',region:'전국',region_slug:'hub',shop_count:${totalShops},today_open:0});</script>`;
+  return `<!doctype html>
+<html lang="ko"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="index,follow,max-image-preview:large">
+<link rel="icon" type="image/png" href="/icon.png">
+<title>${esc(title)}</title>
+<meta name="description" content="${esc(desc)}">
+<link rel="canonical" href="${url}">
+<meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}">
+<meta property="og:url" content="${url}"><meta property="og:image" content="${SITE}/og.png">
+${gaSnippet}
+<script type="application/ld+json">${JSON.stringify(pageLd)}</script>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;color:#222;background:#fff;line-height:1.6}
+.wrap{max-width:760px;margin:0 auto;padding:22px 16px 60px}
+h1{font-size:24px;margin:8px 0 6px}.sub{color:#666;font-size:14px;margin:0 0 14px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 18px}.tab{font-size:13px;font-weight:700;padding:6px 12px;border-radius:999px;background:#f4f4f5;color:#555;text-decoration:none}
+.cta{display:block;text-align:center;background:#ec4899;color:#fff;font-weight:800;font-size:16px;padding:15px;border-radius:14px;text-decoration:none;margin:18px 0}
+.regions{font-size:14px;line-height:2.1}.regions a{color:#ec4899;text-decoration:none;font-weight:600}
+footer{margin-top:30px;font-size:12px;color:#aaa}
+</style></head>
+<body><div class="wrap">
+<h1>전국 ${esc(place)} · 지역별 당일 예약 가격비교</h1>
+<p class="sub">${esc(freshLabel)} 기준 전국 <b>${nRegion}개 지역</b> · <b>${totalShops.toLocaleString("en-US")}곳</b>의 ${esc(place)}을 모았어요. 우리 동네를 선택하면 실시간 빈자리·가격을 볼 수 있습니다.</p>
+<div class="tabs"><span class="tab" style="background:#ec4899;color:#fff">${esc(label)}</span>${crossHub}</div>
+<a class="cta" href="${SITE}/?cat=${encodeURIComponent(label)}">샥에서 내 주변 ${esc(place)} 지도로 보기 →</a>
+<h2>지역별 ${esc(place)}</h2>
+<p class="regions">${regionLinks}</p>
 <footer>샥(syak) · 지금 예약 되는 동네 뷰티샵 · <a href="${SITE}" style="color:#aaa">themuselab.kr</a></footer>
 </div></body></html>`;
 }
 
 export default function handler(req, res) {
-  // /{cat}/{slug} → rewrite → /api/seo?cat={cat}&gu={slug}
+  // /{cat}/{slug} → rewrite → /api/seo?cat={cat}&gu={slug} (gu 없으면 허브)
   let cat = (req.query && req.query.cat) || "";
   if (Array.isArray(cat)) cat = cat[0];
   cat = String(cat).toLowerCase();
@@ -265,6 +321,17 @@ export default function handler(req, res) {
   let raw = req.query && req.query.gu;
   if (Array.isArray(raw)) raw = raw[0];
   raw = (raw || "").toString().replace(/\/+$/, "");
+
+  // gu 없음 → 카테고리 허브 페이지
+  if (!raw) {
+    const now = new Date();
+    const html = renderHub(cat, catData, now.toISOString(), `${now.getFullYear()}년 ${now.getMonth() + 1}월`);
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "public, s-maxage=3600, stale-while-revalidate=86400");
+    res.end(html);
+    return;
+  }
 
   // 1) 영문 슬러그 → 한글 gu (해당 카테고리에 데이터 있는 경우만)
   let key = null;
