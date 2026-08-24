@@ -6,8 +6,8 @@
   "installCommand": "npm install",
   "rewrites": [
     { "source": "/sitemap.xml", "destination": "/api/sitemap" },
-    { "source": "/:cat(nail|hair|waxing|eyelash)/:gu", "destination": "/api/seo?cat=:cat&gu=:gu" },
-    { "source": "/:cat(nail|hair|waxing|eyelash)/:gu/", "destination": "/api/seo?cat=:cat&gu=:gu" },
-    { "source": "/((?!assets|data|api|icon|favicon|robots|sitemap|nail|hair|waxing|eyelash|og|fallback|llms).*)", "destination": "/" }
+    { "source": "/:cat(nail|hair|waxing|eyelash|pmu|massage|skincare|tanning)/:gu", "destination": "/api/seo?cat=:cat&gu=:gu" },
+    { "source": "/:cat(nail|hair|waxing|eyelash|pmu|massage|skincare|tanning)/:gu/", "destination": "/api/seo?cat=:cat&gu=:gu" },
+    { "source": "/((?!assets|data|api|icon|favicon|robots|sitemap|nail|hair|waxing|eyelash|pmu|massage|skincare|tanning|og|fallback|llms).*)", "destination": "/" }
   ]
 }

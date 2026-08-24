@@ -25,6 +25,12 @@ const slugOf = (gu) => slugFor(gu);
 const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ESC[c]);
 const won = (p) => (p ? `${Number(p).toLocaleString("en-US")}원` : null);
+// 받침 유무로 은/는 조사 (마사지·피부관리·반영구는 모음 끝 → '는')
+function eunNeun(w) {
+  const c = w.charCodeAt(w.length - 1);
+  const batchim = c >= 0xac00 && c <= 0xd7a3 && (c - 0xac00) % 28 !== 0;
+  return w + (batchim ? "은" : "는");
+}
 
 // 앱(지역 필터) 딥링크. 같은 도메인이라 utm 미부착(GA4 세션 왜곡 방지) →
 // 퍼널은 이벤트 seo_landing/seo_cta_click + landing_page 차원으로.
@@ -96,7 +102,7 @@ function render(cat, gu, entry, catData, nowIso, freshLabel) {
     [`${gu} ${place} 당일 예약 가능한가요?`,
       `네, 가능합니다. 샥(syak)에서 ${gu} ${place}의 실시간 빈자리를 확인하고 당일 예약할 수 있어요. 오늘 예약 가능한 곳은 현재 ${today}곳입니다. (${freshLabel} 기준)`],
     [`${gu} ${place} 가격은 얼마인가요?`,
-      `${gu} ${place}은 최저 ${low}부터 시작합니다. 중앙값은 약 ${mid}이며, 첫방문 할인이나 이벤트를 진행하는 곳도 ${deal}곳 있어요.`],
+      `${gu} ${eunNeun(place)} 최저 ${low}부터 시작합니다. 중앙값은 약 ${mid}이며, 첫방문 할인이나 이벤트를 진행하는 곳도 ${deal}곳 있어요.`],
     ["예약 빈자리를 어떻게 확인하나요?",
       `샥 앱·웹에서 시간·지역·분야로 필터하면 지금 예약 가능한 ${label} 매장만 지도에 표시됩니다. 리뷰·사진·가격을 보고 바로 예약하세요.`],
   ];
@@ -109,7 +115,7 @@ function render(cat, gu, entry, catData, nowIso, freshLabel) {
   const faqHtml = faqs.map(([q, a]) => `<dt>${esc(q)}</dt><dd>${esc(a)}</dd>`).join("");
 
   const tldr =
-    `<p class="tldr"><b>요약(${esc(freshLabel)} 기준):</b> ${esc(gu)} ${esc(place)}은 <b>최저 ${esc(low)}</b>부터 시작하고, ` +
+    `<p class="tldr"><b>요약(${esc(freshLabel)} 기준):</b> ${esc(gu)} ${esc(eunNeun(place))} <b>최저 ${esc(low)}</b>부터 시작하고, ` +
     `대표가격 중앙값은 약 ${esc(mid)}입니다. 현재 모은 <b>${n}곳</b> 중 <b>오늘 예약 가능 ${today}곳</b>, ` +
     `<b>할인·첫방문 이벤트 ${deal}곳</b>. 실시간 빈자리는 <b>샥(syak)</b>에서 바로 확인하고 당일 예약할 수 있습니다.</p>`;
 
