@@ -119,20 +119,12 @@ def main():
         json.dumps({"site": SITE, "order": order, "saenggwon": saeng, "data": data},
                    ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
 
-    # sitemap.xml — 생활권은 고의도 검색어라 priority 0.8(행정구 0.7보다 높게)
-    sm = ['<?xml version="1.0" encoding="UTF-8"?>',
-          '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
-          f"<url><loc>{SITE}/</loc><priority>1.0</priority></url>"]
-    for g in saeng:
-        sm.append(f"<url><loc>{SITE}/nail/{slug(g)}/</loc><priority>0.8</priority></url>")
-    for g in order:
-        sm.append(f"<url><loc>{SITE}/nail/{slug(g)}/</loc><priority>0.7</priority></url>")
-    sm.append("</urlset>")
-    (PUBLIC / "sitemap.xml").write_text("\n".join(sm), encoding="utf-8")
-    (PUBLIC / "robots.txt").write_text(
-        f"User-agent: *\nAllow: /\nSitemap: {SITE}/sitemap.xml\n", encoding="utf-8")
+    # sitemap.xml / robots.txt 는 더 이상 정적 생성하지 않는다.
+    #  - sitemap: 동적 서버리스 api/sitemap.js 가 regions.json에서 영문 슬러그 URL 생성
+    #  - robots: public/robots.txt(소스 관리, AI 크롤러 허용 포함)
+    # (예전엔 여기서 한글 슬러그 정적 sitemap.xml + robots.txt를 썼음 → 동적/영문으로 이전)
 
-    print(f"\n✅ regions.json({len(order)}지역+{len(saeng)}생활권) + sitemap.xml + robots.txt 생성")
+    print(f"\n✅ regions.json({len(order)}지역+{len(saeng)}생활권) 생성 (sitemap은 동적 api/sitemap.js)")
     print(f"   → {API/'regions.json'}")
 
 
