@@ -69,17 +69,19 @@ const [
 
 const convRate = m30Views ? ((m30Reserve / m30Views) * 100).toFixed(1) + '%' : '-';
 
-// 샵 이름 매핑 시도(Supabase). 실패(정지 등)하면 shop_id 그대로.
+// 샵 이름 매핑(백엔드 internal API, RDS). 실패하면 shop_id 그대로.
 let names = {};
 try {
   const ids = topShops.map(s => s.key).filter(x => x && x !== '(없음)' && x !== '(not set)');
-  if (ids.length && process.env.SUPABASE_URL && process.env.SUPABASE_SECRET_KEY) {
-    const r = await fetch(`${process.env.SUPABASE_URL}/rest/v1/shops?id=in.(${ids.join(',')})&select=id,name`, {
-      headers: { apikey: process.env.SUPABASE_SECRET_KEY, Authorization: `Bearer ${process.env.SUPABASE_SECRET_KEY}` },
+  const base = process.env.API_BASE_URL, key = process.env.INTERNAL_API_KEY;
+  if (ids.length && base && key) {
+    const r = await fetch(`${base.replace(/\/$/, '')}/internal/shops/meta?ids=${encodeURIComponent(ids.join(','))}`, {
+      headers: { 'X-Internal-Key': key },
     });
-    if (r.ok) for (const s of await r.json()) names[s.id] = s.name;
+    if (r.ok) for (const s of (await r.json()).shops ?? []) names[s.id] = s.name;
+    else console.error('⚠️ 샵 이름 매핑 실패', r.status);
   }
-} catch { /* 이름 없이 진행 */ }
+} catch (e) { console.error('⚠️ 샵 이름 매핑 skip', e.message); }
 
 const shopLines = topShops.length
   ? topShops.map((s, i) => `${i + 1}. ${names[s.key] || s.key} — ${s.value.toLocaleString()}회`).join('\n')

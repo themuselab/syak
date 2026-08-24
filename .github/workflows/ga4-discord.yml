@@ -20,8 +20,6 @@ jobs:
           GA4_PROPERTY_ID: ${{ secrets.GA4_PROPERTY_ID }}
           GA4_SA_KEY: ${{ secrets.GA4_SA_KEY }}
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
         run: |
