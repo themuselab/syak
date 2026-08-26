@@ -6,6 +6,8 @@ import { makeSearchInBounds, makePinsInBounds, makeSearchByGus, makeGetPartners,
 import { makeGetShopDetail } from "../contexts/catalog/application/get-shop-detail";
 
 import { GA4AnalyticsSink } from "../contexts/analytics/infrastructure/ga4-analytics-sink";
+import { MetaPixelSink } from "../contexts/analytics/infrastructure/meta-pixel-sink";
+import { CompositeAnalyticsSink } from "../contexts/analytics/infrastructure/composite-analytics-sink";
 import { makeTrack } from "../contexts/analytics/application/track";
 
 import { ApiLeadRepository } from "../contexts/lead/infrastructure/api-lead-repository";
@@ -18,7 +20,11 @@ import { makeGetShopSlots } from "../contexts/reservation/application/get-shop-s
 // ── 어댑터 인스턴스화 (구현 선택) ─────────────────────────
 // 카탈로그/슬롯: 백엔드 API(RDS)에서 조회. Supabase 직접 호출을 이전(egress 정지 회피).
 const shopRepo = new ApiShopRepository();
-const analyticsSink = new GA4AnalyticsSink(import.meta.env.VITE_TARGET === "toss" ? "toss" : "web");
+// GA4 + Meta 픽셀로 fan-out. 메타 픽셀은 VITE_META_PIXEL_ID 있을 때만 활성(없으면 no-op).
+const analyticsSink = new CompositeAnalyticsSink([
+  new GA4AnalyticsSink(import.meta.env.VITE_TARGET === "toss" ? "toss" : "web"),
+  new MetaPixelSink(),
+]);
 const leadRepo = new ApiLeadRepository();
 const slotProvider = new ApiSlotProvider(); // 백엔드 API → RDS slots(스크래퍼/사장님 통합)
 
