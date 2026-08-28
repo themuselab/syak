@@ -74,10 +74,16 @@ function render(cat, gu, entry, catData, nowIso, freshLabel) {
       `<ul class="menus">${pop.map((m) => `<li><span>${esc(m.n)}</span><b>${esc(won(m.p))}~</b></li>`).join("")}</ul>`
     : "";
 
-  const title = `${gu} ${place} 추천 · 당일 예약 가능 가격비교 (${freshLabel}) | 샥`;
+  // CTR 훅킹 — 안 변하는 실사실만(원칙#2). today(오늘 N곳)·n(top-40 상한)은 고정 스냅샷이라
+  // 메타에 안 씀(사실과 어긋날 소지). 최저가(데이터 기반)+"당일 예약"(제품 기능, 항상 참)으로 소구.
+  // 제목 ≤60·설명 ~150자. 페이지마다 지역·가격이 달라 고유.
+  const priceTitle = low !== "—" ? `최저 ${low} · ` : "";
+  const title = `${gu} ${place} ${priceTitle}당일 예약 가격비교 | 샥`;
+  const priceDesc = low !== "—" ? ` 최저 ${low}부터,` : "";
+  const dealDesc = deal > 0 ? ` 첫방문·할인 ${deal}곳.` : "";
   const desc =
-    `${gu} ${place} ${n}곳의 대표가격과 당일 예약 가능 여부를 한눈에. ` +
-    `최저 ${low}부터, 오늘 예약 ${today}곳·할인 ${deal}곳. 지금 예약 가능한 곳을 샥에서 바로 확인하세요.`;
+    `${gu} ${place} 가격 한눈에 비교 —${priceDesc}${dealDesc} 지금 예약 빈자리 있는 곳을 샥에서 실시간 확인하고 안 기다리고 바로 예약하세요.`
+      .replace(/\s+/g, " ");
   const url = `${SITE}/${cat}/${sl}/`;
 
   const cards = [];
@@ -260,8 +266,8 @@ function renderHub(cat, catData, nowIso, freshLabel) {
   const nRegion = order.length;
   const totalShops = order.reduce((a, g) => a + ((catData.data[g].shops || []).length), 0);
   const url = `${SITE}/${cat}/`;
-  const title = `${place} 추천 · 전국 지역별 당일 예약 가격비교 (${freshLabel}) | 샥`;
-  const desc = `전국 ${nRegion}개 지역 ${place}의 당일 예약 가능 여부와 대표가격을 한눈에. 우리 동네 ${place} 실시간 빈자리를 샥에서 바로 확인하세요.`;
+  const title = `전국 ${place} ${totalShops.toLocaleString("en-US")}곳 · 지역별 당일 예약·가격비교 | 샥`;
+  const desc = `우리 동네 ${place} 어디가 지금 예약 되고 얼마인지 한눈에. 전국 ${nRegion}개 지역 ${totalShops.toLocaleString("en-US")}곳의 당일 예약·최저가를 샥에서 실시간 확인하세요.`;
   const regionLinks = order.map((g) => `<a href="/${cat}/${slugOf(g)}/">${esc(g)} ${esc(label)}</a>`).join(" · ");
   const crossHub = Object.keys(CATEGORIES)
     .filter((c) => c !== cat && CATS[c])
