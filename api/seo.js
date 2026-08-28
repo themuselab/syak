@@ -314,15 +314,29 @@ footer{margin-top:30px;font-size:12px;color:#aaa}
 </div></body></html>`;
 }
 
+// 진짜 없는 페이지 → 404(noindex). 소프트404(200 반환) 회피 — 색인 예산 보호.
+// 주의: 데이터 "없음"에만 404. 조회 실패(못 가져옴)는 여기 오지 않음(로컬 JSON이라 항상 존재).
+function notFound(res) {
+  res.statusCode = 404;
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Cache-Control", "public, max-age=60"); // 404 베이크 방지: 짧게만 캐시
+  res.end(`<!doctype html><html lang="ko"><head><meta charset="UTF-8">` +
+    `<meta name="robots" content="noindex,follow"><meta name="viewport" content="width=device-width,initial-scale=1">` +
+    `<title>페이지를 찾을 수 없어요 · 샥</title></head>` +
+    `<body style="font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;max-width:520px;margin:64px auto;padding:0 20px;text-align:center;color:#333">` +
+    `<h1 style="font-size:22px">페이지를 찾을 수 없어요</h1>` +
+    `<p style="color:#777">주소가 바뀌었거나 없는 페이지예요.</p>` +
+    `<p><a href="${SITE}/" style="color:#ec4899;font-weight:700;text-decoration:none">샥 홈으로 →</a></p>` +
+    `</body></html>`);
+}
+
 export default function handler(req, res) {
   // /{cat}/{slug} → rewrite → /api/seo?cat={cat}&gu={slug} (gu 없으면 허브)
   let cat = (req.query && req.query.cat) || "";
   if (Array.isArray(cat)) cat = cat[0];
   cat = String(cat).toLowerCase();
   const catData = CATS[cat];
-  if (!CATEGORIES[cat] || !catData) {
-    res.statusCode = 302; res.setHeader("Location", "/"); res.end(); return;
-  }
+  if (!CATEGORIES[cat] || !catData) { notFound(res); return; }
 
   let raw = req.query && req.query.gu;
   if (Array.isArray(raw)) raw = raw[0];
@@ -353,7 +367,7 @@ export default function handler(req, res) {
       res.end(); return;
     }
   }
-  if (!key) { res.statusCode = 302; res.setHeader("Location", "/"); res.end(); return; }
+  if (!key) { notFound(res); return; }
 
   const now = new Date();
   const nowIso = now.toISOString();

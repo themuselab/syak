@@ -9,7 +9,6 @@
     { "source": "/:cat(nail|hair|waxing|eyelash|pmu|massage|skincare|tanning)/:gu", "destination": "/api/seo?cat=:cat&gu=:gu" },
     { "source": "/:cat(nail|hair|waxing|eyelash|pmu|massage|skincare|tanning)/:gu/", "destination": "/api/seo?cat=:cat&gu=:gu" },
     { "source": "/:cat(nail|hair|waxing|eyelash|pmu|massage|skincare|tanning)", "destination": "/api/seo?cat=:cat" },
-    { "source": "/:cat(nail|hair|waxing|eyelash|pmu|massage|skincare|tanning)/", "destination": "/api/seo?cat=:cat" },
-    { "source": "/((?!assets|data|api|icon|favicon|robots|sitemap|nail|hair|waxing|eyelash|pmu|massage|skincare|tanning|og|fallback|llms).*)", "destination": "/" }
+    { "source": "/:cat(nail|hair|waxing|eyelash|pmu|massage|skincare|tanning)/", "destination": "/api/seo?cat=:cat" }
   ]
 }
