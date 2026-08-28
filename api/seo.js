@@ -231,6 +231,7 @@ ul{list-style:none;padding:0;margin:0}.card{border-top:1px solid #f1f1f3}.card a
 .faq dt{font-weight:700;font-size:15px;margin-top:14px}.faq dd{margin:4px 0 0;font-size:14px;color:#555}
 .links{margin-top:30px;font-size:13px;color:#888;line-height:2}.links a{color:#888;text-decoration:none}
 .fresh{font-size:12px;color:#b9739a;margin:2px 0 0}
+.src{font-size:12px;color:#aaa;margin:18px 0 0;line-height:1.7}
 footer{margin-top:30px;font-size:12px;color:#aaa}
 </style>
 </head>
@@ -254,6 +255,7 @@ ${popHtml}
 <h2>자주 묻는 질문</h2>
 <dl class="faq">${faqHtml}</dl>
 <div class="links"><b style="color:#666">다른 지역 ${esc(label)}</b> · <a href="/${cat}/" style="color:#ec4899;font-weight:600">전국 ${esc(place)} 전체보기</a><br>${links}</div>
+<p class="src">이 페이지의 가격·예약 정보는 <b>샥(syak)</b>이 ${esc(gu)}의 ${esc(place)}을 직접 수집·집계한 1차 데이터입니다. ${esc(freshLabel)} 기준이며, 실시간 예약 빈자리는 샥에서 확인할 수 있습니다.</p>
 <footer>샥(syak) · 지금 예약 되는 동네 뷰티샵 · <a href="${SITE}" style="color:#aaa">themuselab.kr</a></footer>
 </div></body></html>`;
 }
