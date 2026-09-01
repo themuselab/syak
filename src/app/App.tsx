@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { SheetRef } from "react-modal-sheet";
 import { useCatalog } from "../contexts/catalog/ui/hooks/useCatalog";
-import { MapView } from "../contexts/catalog/ui/MapView";
+import { MapView as MapViewKakao } from "../contexts/catalog/ui/MapView";
+import { MapViewNaver } from "../contexts/catalog/ui/MapViewNaver";
+// 지도 제공자 전환: 기본 네이버, VITE_MAP_PROVIDER=kakao 로 카카오 폴백.
+const MapView = import.meta.env.VITE_MAP_PROVIDER === "kakao" ? MapViewKakao : MapViewNaver;
 import { CollectionChips, type ChipKey } from "../contexts/catalog/ui/CollectionChips";
 import { ShopListSheet } from "../contexts/catalog/ui/ShopListSheet";
 import { ShopDetailSheet } from "../contexts/catalog/ui/ShopDetailSheet";
