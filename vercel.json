@@ -5,6 +5,7 @@
   "framework": "vite",
   "installCommand": "npm install",
   "rewrites": [
+    { "source": "/privacy", "destination": "/privacy.html" },
     { "source": "/sitemap.xml", "destination": "/api/sitemap" },
     { "source": "/:cat(nail|hair|waxing|eyelash|pmu|massage|skincare|tanning)/:gu", "destination": "/api/seo?cat=:cat&gu=:gu" },
     { "source": "/:cat(nail|hair|waxing|eyelash|pmu|massage|skincare|tanning)/:gu/", "destination": "/api/seo?cat=:cat&gu=:gu" },
