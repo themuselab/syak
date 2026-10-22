@@ -6,9 +6,11 @@
 - 할인 키워드 있는 desc만 채택 (가게소개문/빈값 제외) → 정직한 '할인' 신호
 - 매 실행마다 event_desc/event_price 갱신 (사라진 이벤트는 null로 정리)
 
-env: SUPABASE_URL, SUPABASE_SECRET_KEY  (로컬은 같은 폴더 .env)
+env: API_BASE_URL, INTERNAL_API_KEY  (로컬은 같은 폴더 .env)
+저장: 백엔드 internal API(RDS). 예전엔 Supabase에 바로 썼는데 2026-08 Supabase 삭제 후
+2달간 매일 실패했다(앱 할인 정보가 8월에 멈춤) → 2026-10-22 백엔드로 이전.
 """
-import json, os, re, sys, time, urllib.request, zlib
+import json, os, random, re, sys, time, urllib.error, urllib.request, zlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -22,8 +24,10 @@ if _local.exists():
         if "=" in line and not line.strip().startswith("#"):
             k, v = line.split("=", 1)
             ENV.setdefault(k.strip(), v.strip())
-SB_URL = ENV["SUPABASE_URL"].rstrip("/")
-SB_SECRET = ENV.get("SUPABASE_SECRET_KEY") or ENV.get("SUPABASE_SECRET")
+API_BASE = (ENV.get("API_BASE_URL") or "").rstrip("/")
+API_KEY = ENV.get("INTERNAL_API_KEY") or ""
+if not API_BASE or not API_KEY:
+    raise SystemExit("API_BASE_URL/INTERNAL_API_KEY 필요")
 
 # 샤딩 — 매트릭스 잡 분할(각 러너 다른 IP, 25분 차단선 안 넘게)
 SHARD = int(ENV.get("SHARD", "0"))
@@ -36,31 +40,32 @@ UA = {"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) Appl
 DISC_KW = re.compile(r"할인|이벤트|쿠폰|특가|무료|첫\s*방문|첫\s*예약|신규|오픈|%|원\b|천원")
 
 
-def sb(method, path, body=None, prefer=None, extra=None):
-    headers = {"apikey": SB_SECRET, "Authorization": f"Bearer {SB_SECRET}", "Content-Type": "application/json"}
-    if prefer:
-        headers["Prefer"] = prefer
-    if extra:
-        headers.update(extra)
-    data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(f"{SB_URL}/rest/v1/{path}", data=data, method=method, headers=headers)
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return r.status, r.headers, r.read()
+def api(method, path, payload=None, tries=4):
+    """백엔드 internal API (RDS). 5xx·네트워크 오류만 재시도."""
+    data = json.dumps(payload).encode() if payload is not None else None
+    last = None
+    for i in range(tries):
+        try:
+            req = urllib.request.Request(f"{API_BASE}{path}", data=data, method=method,
+                headers={"Content-Type": "application/json", "X-Internal-Key": API_KEY})
+            with urllib.request.urlopen(req, timeout=120) as r:
+                return json.loads(r.read() or b"{}")
+        except urllib.error.HTTPError as e:
+            if e.code < 500:
+                raise
+            last = e
+        except Exception as e:
+            last = e
+        time.sleep(2 * (i + 1))
+    raise last
 
 
 def load_targets():
-    out, frm = [], 0
-    while True:
-        st, hdr, body = sb("GET", "shops?biz_id=not.is.null&select=id,biz_id,biz_type,item_id,item_ids&order=id",
-                           prefer="count=exact", extra={"Range": f"{frm}-{frm+999}"})
-        rows = json.loads(body)
-        out.extend(rows)
-        total = int((hdr.get("content-range") or "/0").split("/")[1] or 0)
-        frm += 1000
-        if frm >= total or not rows:
-            break
+    out = api("GET", "/internal/shops/targets").get("targets", [])
     if NUM_SHARDS > 1:  # 이 러너 담당 샤드만
         out = [r for r in out if zlib.crc32(str(r["id"]).encode()) % NUM_SHARDS == SHARD]
+    # 순서를 섞는다 — 예산이 모자라도 매번 같은 샵만 빠지지 않게(slot_ingest와 같은 이유)
+    random.shuffle(out)
     return out
 
 
@@ -124,7 +129,7 @@ def fetch_one(r, tries=2):  # 빠른 실패 — 차단은 재시도해도 안 �
 def upsert_rows(rows):
     up = 0
     for i in range(0, len(rows), 500):
-        sb("POST", "shops", body=rows[i:i+500], prefer="return=minimal,resolution=merge-duplicates")
+        api("POST", "/internal/shops/events", {"rows": rows[i:i+500]})
         up += len(rows[i:i+500])
     return up
 
@@ -169,9 +174,7 @@ def main():
     # 저장 (event 없는 곳은 null로 → 만료 이벤트 정리)
     up = 0
     try:
-        for i in range(0, len(rows), 500):
-            sb("POST", "shops", body=rows[i:i+500], prefer="return=minimal,resolution=merge-duplicates")
-            up += len(rows[i:i+500])
+        up = upsert_rows(rows)
         print(f"✅ 완료: {up:,}곳 갱신 | 할인중 {found:,}곳 | 에러 {err} | {time.time()-t0:.0f}초")
     except Exception as ex:
         print(f"⚠️ 업서트 실패({up:,}건까지 됨): {ex}")

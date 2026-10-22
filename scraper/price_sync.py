@@ -4,6 +4,9 @@
 한 번에 전국 4만을 다 하지 않고, '가장 오래 안 본 샵'부터 N곳씩 계속 갱신(큐).
 - 메뉴/가격은 pcmap place home 페이지의 window.__APOLLO_STATE__에서 추출 (Playwright X, stdlib만)
 - recompute_price와 동일한 대표가 로직(ADDON 제외 + 네일은 컬러/젤 우선)으로 min_price/price_tier 재계산
+- 같은 페이지에서 영업시간(newBusinessHours)·방문자 평점도 뽑고, 리뷰 페이지 1장을 더 받아
+  최근 방문자 리뷰(방문일 포함)를 detail에 합친다(POST /internal/shops/details, 2026-10-22).
+  리뷰 페이지가 막혀도 가격·영업시간은 저장한다(리뷰만 다음 회차).
 - 처리한 샵은 price_synced_at=now 도장 → 다음 런은 그 다음 오래된 샵
 - 매 런 다른 러너 IP + 시간예산 + 차단 시 건너뜀(도장 안 찍음 → 다음에 재시도)
 
@@ -33,6 +36,10 @@ if not API_BASE or not API_KEY:
 BATCH = int(ENV.get("PRICE_BATCH", "1500"))     # 이번 런에서 시도할 최대 샵 수(시간예산이 더 빨리 끊기도 함)
 WORKERS = int(ENV.get("PRICE_WORKERS", "3"))    # 동시 요청 — 낮게(네이버 throttle 회피)
 BUDGET_SEC = int(ENV.get("BUDGET_SEC", "600"))  # 10분 (job timeout보다 짧게)
+# 러너 여러 대가 같은 큐(가장 오래된 순)를 받아 번갈아 나눠 갖는다(PART번째, PARTS대).
+PART = int(ENV.get("PART", "0"))
+PARTS = int(ENV.get("PARTS", "1"))
+REVIEWS_MAX = 10
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
@@ -104,10 +111,8 @@ def api(method, path, payload=None, tries=4):
     raise last
 
 
-def fetch_menus(shop_id):
-    """place home 페이지에서 메뉴 추출. 반환: list(메뉴) | None(차단/실패 → 도장 안 찍음).
-    네이버 place는 rate가 높으면 IP를 throttle → 요청당 지연으로 낮은 속도 유지."""
-    url = f"https://pcmap.place.naver.com/place/{shop_id}/home"
+def fetch_state(url):
+    """네이버 place 페이지의 __APOLLO_STATE__. 차단/실패면 None."""
     time.sleep(0.6 + random.random() * 1.0)  # 낮은 req/s 유지(차단 회피)
     html = None
     for attempt in range(2):  # 네트워크 예외만 1회 재시도 (차단은 재시도 안 함)
@@ -128,17 +133,101 @@ def fetch_menus(shop_id):
         obj, _ = DEC.raw_decode(html, i + len(key))
     except Exception:
         return None
+    return obj
+
+
+def parse_hours(obj):
+    """newBusinessHours → [{day,start,end,breaks,description}] | None(정보 없음)."""
+    # newBusinessHours는 ROOT_QUERY의 placeDetail(...) 안에 있다 → 한 단계 안쪽까지 본다.
+    cands = []
+    for v in obj.values():
+        if isinstance(v, dict):
+            cands.append(v)
+            cands.extend(x for x in v.values() if isinstance(x, dict))
+    for v in cands:
+        if not isinstance(v.get("newBusinessHours"), list):
+            continue
+        for nb in v["newBusinessHours"]:
+            out = []
+            for r in (nb or {}).get("businessHours") or []:
+                h = (r or {}).get("businessHours") or {}
+                out.append({
+                    "day": r.get("day") or "",
+                    "start": h.get("start"),
+                    "end": h.get("end"),
+                    "breaks": [{"start": b.get("start"), "end": b.get("end")}
+                               for b in (r.get("breakHours") or []) if b and b.get("start")],
+                    "description": r.get("description"),
+                })
+            if out:
+                return out
+    return None
+
+
+def parse_rating(obj):
+    """방문자 평점(visitorReviewsScore). 샵이 평점을 숨기면 None."""
+    for v in obj.values():
+        if isinstance(v, dict) and v.get("__typename") == "PlaceDetailBase":
+            try:
+                sc = float(v.get("visitorReviewsScore") or 0)
+            except (TypeError, ValueError):
+                return None
+            show = (v.get("reviewSettings") or {}).get("showVisitorReviewScore")
+            return sc if sc > 0 and show is not False else None
+    return None
+
+
+def fetch_place(shop_id):
+    """place home → {menus, hours, rating}. None = 차단/실패(도장 안 찍음)."""
+    obj = fetch_state(f"https://pcmap.place.naver.com/place/{shop_id}/home")
+    if obj is None:
+        return None
     menus = []
     for v in obj.values():
         if isinstance(v, dict) and v.get("__typename") == "Menu" and v.get("name"):
             menus.append({"name": v.get("name"), "price": parse_won(v.get("price")),
                           "recommend": v.get("recommend"), "priceType": v.get("priceType")})
-    return menus  # [] 이면 메뉴 없는 샵(정상) → 도장 찍고 미정 처리
+    # menus [] 이면 메뉴 없는 샵(정상) → 도장 찍고 미정 처리
+    return {"menus": menus, "hours": parse_hours(obj), "rating": parse_rating(obj)}
+
+
+def fetch_reviews(shop_id):
+    """방문자 리뷰 페이지 → 최근 리뷰(방문일 포함) 최대 REVIEWS_MAX개. 실패/없음이면 None."""
+    obj = fetch_state(f"https://pcmap.place.naver.com/place/{shop_id}/review/visitor")
+    if obj is None:
+        return None
+    out = []
+    for v in obj.values():
+        if not (isinstance(v, dict) and v.get("__typename") == "VisitorReview" and v.get("body")):
+            continue
+        if v.get("status") not in (None, "ACTIVE"):
+            continue
+        out.append({
+            "body": v.get("body"),
+            "images": [m.get("thumbnail") for m in (v.get("media") or [])
+                       if m and m.get("type") == "image" and m.get("thumbnail")][:4],
+            "keywords": [k.get("name") for k in (v.get("votedKeywords") or []) if k and k.get("name")],
+            "ownerReply": (v.get("reply") or {}).get("body"),
+            "visited": v.get("visited"),  # "10.8.목" — 앱에 그대로 표시
+            "visitedAt": v.get("representativeVisitDateTime"),
+        })
+    # 페이지 순서는 추천순이라 날짜가 섞여 있다 → 최근 방문 순으로
+    out.sort(key=lambda x: x.get("visitedAt") or "", reverse=True)
+    return out[:REVIEWS_MAX] or None
+
+
+def fetch_one(shop_id):
+    place = fetch_place(shop_id)
+    if place is None:
+        return None
+    place["reviews"] = fetch_reviews(shop_id)
+    return place
 
 
 def load_targets():
     """가장 오래 안 본 샵부터 BATCH개 (never-synced 우선). detail 있는 샵만. (RDS)"""
-    return api("GET", f"/internal/shops/price-targets?limit={BATCH}").get("targets", [])
+    out = api("GET", f"/internal/shops/price-targets?limit={BATCH * PARTS}").get("targets", [])
+    return out[PART::PARTS]
 
 
 def main():
@@ -150,18 +239,29 @@ def main():
     t0 = time.time()
     deadline = t0 + BUDGET_SEC
     ex = ThreadPoolExecutor(max_workers=WORKERS)
-    futs = {ex.submit(fetch_menus, t["id"]): t for t in targets}
+    details = []
+    futs = {ex.submit(fetch_one, t["id"]): t for t in targets}
     for fut in as_completed(futs):
         if time.time() > deadline:
             break
         t = futs[fut]
         try:
-            menus = fut.result()
+            place = fut.result()
         except Exception:
-            menus = None
-        if menus is None:           # 차단/실패 → 도장 안 찍음(다음 런 재시도)
+            place = None
+        if place is None:           # 차단/실패 → 도장 안 찍음(다음 런 재시도)
             blocked += 1
             continue
+        menus = place["menus"]
+        d = {"id": t["id"]}
+        if place["hours"]:
+            d["businessHours"] = place["hours"]
+        if place["rating"]:
+            d["rating"] = place["rating"]
+        if place["reviews"]:
+            d["reviews"] = place["reviews"]
+        if len(d) > 1:
+            details.append(d)
         p = rep_price(menus, t.get("category"))
         tr = tier(p)
         dist[tr] += 1
@@ -174,8 +274,18 @@ def main():
     for i in range(0, len(updates), 500):
         r = api("POST", "/internal/shops/prices", {"rows": updates[i:i+500]})
         up += r.get("updated", len(updates[i:i+500]))
+    # 영업시간·평점·리뷰 → detail (보낸 키만 합침)
+    dup = 0
+    for i in range(0, len(details), 100):
+        try:
+            r = api("POST", "/internal/shops/details", {"rows": details[i:i+100]})
+            dup += r.get("updated", 0)
+        except Exception as e:
+            print(f"   ⚠️ 상세 저장 실패: {e}")
     elapsed = time.time() - t0
     print(f"✅ 갱신 {up}곳 | 성공 {ok} 차단/실패 {blocked} | {elapsed:.0f}초")
+    print(f"   상세 {dup}곳 (영업시간 {sum(1 for d in details if 'businessHours' in d)} · "
+          f"평점 {sum(1 for d in details if 'rating' in d)} · 리뷰 {sum(1 for d in details if 'reviews' in d)})")
     for k in ["1만원대", "2만원대", "3만원대", "4만원이상", "미정"]:
         if dist[k]:
             print(f"   {k}: {dist[k]}")

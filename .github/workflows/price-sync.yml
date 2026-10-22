@@ -20,16 +20,23 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     timeout-minutes: 15 # 스크랩 예산 10분 + 저장 여유
+    # 샵당 요청이 2장(홈 + 리뷰)이 돼서 러너 2대로 나눈다(각자 다른 IP, 큐를 번갈아 나눠 가짐).
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [0, 1]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Sync prices ← Naver
+      - name: Sync prices·hours·rating·reviews ← Naver (part ${{ matrix.part }}/2)
         env:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
           PRICE_BATCH: ${{ github.event.inputs.batch || '1500' }}
           PRICE_WORKERS: "3"
           BUDGET_SEC: "600"
+          PART: ${{ matrix.part }}
+          PARTS: "2"
         run: python scraper/price_sync.py
