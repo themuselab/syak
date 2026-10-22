@@ -8,7 +8,7 @@ env: SUPABASE_URL, SUPABASE_SECRET_KEY  (GitHub Actions Secrets에서 주입)
      API_BASE_URL, INTERNAL_API_KEY     (빈자리 알림 dispatch용 — 없으면 알림만 skip)
 로컬 실행 시엔 같은 폴더의 .env 도 읽음.
 """
-import json, os, re, sys, time, urllib.request, urllib.error, zlib
+import json, random, os, re, sys, time, urllib.request, urllib.error, zlib
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
@@ -238,6 +238,8 @@ def main():
 
     targets = load_targets()
     tasks = expand_tasks(targets)
+    # 순서를 섞는다 — 예산이 모자라도 매번 같은 샵이 빠지지 않게(늘 뒤쪽 샵만 갱신 안 되던 문제).
+    random.shuffle(tasks)
     # shop_id → {item_id: 이름} (상세 표시용)
     name_map = {t["id"]: {str(it.get("id")): it.get("name") for it in (t.get("items") or [])} for t in targets}
     print(f"📡 슬롯 수집: {len(targets)}곳 / item(디자이너·서비스) {len(tasks)}건, {start_ymd} ~ {end_ymd}")

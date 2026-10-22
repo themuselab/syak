@@ -2,9 +2,9 @@ name: slot-ingest
 
 on:
   schedule:
-    - cron: "0 * * * *" # 매시 정각 → 그룹 0 (절반)
-    - cron: "30 * * * *" # 매시 30분 → 그룹 1 (나머지 절반)
-  workflow_dispatch: {} # 수동 (그룹 0 실행)
+    - cron: "0 * * * *" # 매시 정각 → 샤드 0·1·2 (러너 3대 동시, 각자 다른 IP)
+    - cron: "30 * * * *" # 매시 30분 → 샤드 3·4·5
+  workflow_dispatch: {} # 수동 (샤드 0·1·2)
 
 concurrency:
   group: slot-ingest-${{ github.event.schedule }}
@@ -13,6 +13,14 @@ concurrency:
 jobs:
   ingest:
     runs-on: ubuntu-latest
+    # 예전엔 2샤드(러너 1대씩)라 한 런에 item ~45,000건 중 13분 예산 안에 ~26,000건만 처리됐다.
+    # 같은 순서로 돌아서 뒤쪽 샵은 영영 갱신이 안 됐고, 지난 날짜 슬롯이 지워지면서 상세에
+    # "예약이 모두 마감"으로 보였다(2026-10-22). 6샤드 × 러너 3대 동시 → 샤드당 ~7,500건.
+    # 공개 저장소라 Actions 분(minute) 비용 없음.
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [0, 1, 2]
     # 스크랩(네이버)은 BUDGET_SEC=13분에 멈춤. 저장(Supabase)은 네이버 안 건드려서
     # 25분 차단선과 무관 → job 타임아웃은 저장 여유 위해 24분으로(스크랩 노출은 13분 유지).
     timeout-minutes: 24
@@ -24,15 +32,15 @@ jobs:
       - name: 시간대로 그룹(샤드) 결정
         run: |
           if [ "${{ github.event.schedule }}" = "30 * * * *" ]; then
-            echo "SHARD=1" >> "$GITHUB_ENV"
+            echo "SHARD=$((3 + ${{ matrix.part }}))" >> "$GITHUB_ENV"
           else
-            echo "SHARD=0" >> "$GITHUB_ENV"
+            echo "SHARD=${{ matrix.part }}" >> "$GITHUB_ENV"
           fi
-      - name: Ingest slots → Supabase
+      - name: Ingest slots → RDS (백엔드 internal API)
         env:
           # 새로 생긴 빈자리를 백엔드 알림으로 밀어줌 (없으면 알림만 skip, 수집은 정상)
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
-          NUM_SHARDS: "2"
+          NUM_SHARDS: "6"
           BUDGET_SEC: "780"
         run: python scraper/slot_ingest.py
