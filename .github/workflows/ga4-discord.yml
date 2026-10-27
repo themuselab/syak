@@ -3,7 +3,12 @@ name: ga4-discord-report
 on:
   schedule:
     - cron: "10 23 * * *" # 매일 08:10 KST
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "1이면 디스코드로 보내지 않고 로그만"
+        required: false
+        default: "0"
 
 jobs:
   report:
@@ -22,6 +27,7 @@ jobs:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || '0' }}
         run: |
           mkdir -p /tmp/ga4 && cd /tmp/ga4
           npm init -y >/dev/null 2>&1

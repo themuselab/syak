@@ -1,0 +1,33 @@
+name: app-discord-report
+
+on:
+  schedule:
+    - cron: "5 23 * * *" # 매일 08:05 KST (GA4 리포트 5분 전)
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: "집계 시간 (기본 24)"
+        required: false
+        default: "24"
+      dry_run:
+        description: "1이면 디스코드로 보내지 않고 로그만"
+        required: false
+        default: "0"
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: 앱 지표 → Discord
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          REPORT_HOURS: ${{ github.event.inputs.hours || '24' }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || '0' }}
+        run: node scripts/app-discord.mjs

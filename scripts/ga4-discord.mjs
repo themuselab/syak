@@ -173,6 +173,11 @@ const embed = {
 
 console.log(`GA4: 어제 활성 ${yUsers} · 30일 MAU ${m30Users} · 예약클릭(30일) ${m30Reserve}`);
 
+console.log(`유입 채널(7일):
+${acqLines}
+${seoField.value}`);
+
+if (process.env.DRY_RUN === '1') { console.log('(DRY_RUN — 디스코드 전송 안 함)'); process.exit(0); }
 if (!WEBHOOK) { console.error('⚠️ DISCORD_WEBHOOK 없음 — 콘솔 출력만'); process.exit(0); }
 const res = await fetch(WEBHOOK, {
   method: 'POST', headers: { 'Content-Type': 'application/json' },
