@@ -150,15 +150,25 @@ def notify_new_slots(new_by_shop, slot_date):
         return
 
     url = f"{base}/notifications/internal/dispatch"
+    # 백엔드가 한 요청 안의 같은 샵 빈자리를 알림 1개로 묶는다 → 한 샵의 시간들이 두 요청으로
+    # 쪼개지지 않게 샵 단위로 끊어 보낸다(200건 근처에서 샵 경계로 자름).
+    batches, cur = [], []
+    for ev in events:
+        if len(cur) >= 200 and cur[-1]["shopId"] != ev["shopId"]:
+            batches.append(cur)
+            cur = []
+        cur.append(ev)
+    if cur:
+        batches.append(cur)
     sent = 0
-    for i in range(0, len(events), 200):
-        body = json.dumps({"events": events[i:i+200]}).encode()
+    for batch in batches:
+        body = json.dumps({"events": batch}).encode()
         try:
             req = urllib.request.Request(url, data=body, method="POST",
                 headers={"Content-Type": "application/json", "X-Internal-Key": key})
             with urllib.request.urlopen(req, timeout=30) as r:
                 r.read()
-            sent += len(events[i:i+200])
+            sent += len(batch)
         except Exception as e:
             print(f"   ⚠️ 알림 dispatch 실패: {e}")
     print(f"🔔 새 빈자리 알림: {len(new_by_shop)}곳 / {sent}건 dispatch")
