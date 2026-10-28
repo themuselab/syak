@@ -140,6 +140,7 @@ class Pace:
 
 
 PACE = Pace()
+ERRS = Counter()  # 실패 종류(로그용)
 
 
 def fetch_state(url):
@@ -152,7 +153,16 @@ def fetch_state(url):
             with urllib.request.urlopen(req, timeout=15) as r:
                 html = r.read().decode("utf-8", "ignore")
             break
-        except Exception:
+        except urllib.error.HTTPError as e:
+            ERRS[f"http_{e.code}"] += 1
+            if e.code in (403, 429):  # 속도 제한 응답 → 바로 재시도하지 말고 전체를 늦춘다
+                PACE.blocked()
+                return None
+            if attempt == 1:
+                return None
+            time.sleep(1.5)
+        except Exception as e:
+            ERRS[type(e).__name__] += 1
             if attempt == 1:
                 return None
             time.sleep(1.5)
@@ -317,6 +327,7 @@ def main():
             print(f"   ⚠️ 상세 저장 실패: {e}")
     elapsed = time.time() - t0
     print(f"✅ 갱신 {up}곳 | 성공 {ok} 차단/실패 {blocked}(속도제한 {PACE.blocks}) | 최종 간격 {PACE.gap:.2f}s | {elapsed:.0f}초")
+    print(f"   실패 종류: {dict(ERRS.most_common())}")
     print(f"   상세 {dup}곳 (영업시간 {sum(1 for d in details if 'businessHours' in d)} · "
           f"평점 {sum(1 for d in details if 'rating' in d)} · 리뷰 {sum(1 for d in details if 'reviews' in d)})")
     for k in ["1만원대", "2만원대", "3만원대", "4만원이상", "미정"]:
