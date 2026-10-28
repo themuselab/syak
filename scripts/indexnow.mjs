@@ -7,7 +7,8 @@
  * 키 파일: public/<KEY>.txt (내용 = 키). 키는 공개값(소유 확인용)이라 비밀 아님.
  * 의존성 없음(Node 20 fetch)
  */
-const SITE = 'https://www.themuselab.kr';
+// SITE=https://owner.themuselab.kr 로 사장님 사이트도 보낼 수 있다(같은 키 파일을 그 사이트에도 둠).
+const SITE = process.env.SITE || 'https://www.themuselab.kr';
 const KEY = '359facb1228d0ec685d3e8d9334cf493';
 const ENDPOINT = 'https://searchadvisor.naver.com/indexnow';
 
