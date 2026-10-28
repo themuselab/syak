@@ -141,10 +141,15 @@ class Pace:
 
 PACE = Pace()
 ERRS = Counter()  # 실패 종류(로그용)
+# 플레이스 페이지는 IP 하나당 요청 한도가 있다(러너 1대 ~120요청 뒤 429, 간격을 4초로 늘려도 계속 429 — 2026-10-28).
+# 한도에 닿으면 더 요청하지 않고 끝낸다(거절된 뒤 계속 두드리지 않음). 우회(러너·IP 늘리기)는 하지 않는다.
+STOP_AFTER_429 = int(ENV.get("PRICE_STOP_AFTER_429", "3"))
 
 
 def fetch_state(url):
     """네이버 place 페이지의 __APOLLO_STATE__. 차단/실패면 None."""
+    if ERRS["http_429"] >= STOP_AFTER_429:
+        return None  # 한도 소진 — 더 요청하지 않는다
     PACE.wait()
     html = None
     for attempt in range(2):  # 네트워크 예외만 1회 재시도 (차단은 재시도 안 함)
@@ -256,14 +261,27 @@ def fetch_reviews(shop_id):
         })
     # 페이지 순서는 추천순이라 날짜가 섞여 있다 → 최근 방문 순으로
     out.sort(key=lambda x: x.get("visitedAt") or "", reverse=True)
-    return out[:REVIEWS_MAX] or None
+    return out[:REVIEWS_MAX]  # [] = 확인했는데 리뷰 없음, None = 못 받음
 
 
-def fetch_one(shop_id):
-    place = fetch_place(shop_id)
+REVIEWS_EVERY_DAYS = 7  # 리뷰는 자주 안 바뀐다 → 7일에 한 번만(샵당 요청 2→1장, 한도 안에서 갱신 샵 수 2배)
+
+
+def reviews_due(t):
+    at = t.get("reviews_synced_at")
+    if not at:
+        return True
+    try:
+        return (datetime.now(timezone.utc) - datetime.fromisoformat(at.replace("Z", "+00:00"))).days >= REVIEWS_EVERY_DAYS
+    except ValueError:
+        return True
+
+
+def fetch_one(t):
+    place = fetch_place(t["id"])
     if place is None:
         return None
-    place["reviews"] = fetch_reviews(shop_id)
+    place["reviews"] = fetch_reviews(t["id"]) if reviews_due(t) else None
     return place
 
 
@@ -275,7 +293,7 @@ def load_targets():
 
 def main():
     targets = load_targets()
-    print(f"💰 가격 동기화 대상: {len(targets)}곳 (가장 오래된 순) | workers {WORKERS} budget {BUDGET_SEC}s")
+    print(f"💰 가격 동기화 대상: {len(targets)}곳 (손님 눈에 띄는 샵 우선) | workers {WORKERS} budget {BUDGET_SEC}s")
     now_iso = datetime.now(timezone.utc).isoformat()
     updates, dist = [], Counter()
     ok = blocked = 0
@@ -283,7 +301,7 @@ def main():
     deadline = t0 + BUDGET_SEC
     ex = ThreadPoolExecutor(max_workers=WORKERS)
     details = []
-    futs = {ex.submit(fetch_one, t["id"]): t for t in targets}
+    futs = {ex.submit(fetch_one, t): t for t in targets}
     for fut in as_completed(futs):
         if time.time() > deadline:
             break
@@ -301,8 +319,10 @@ def main():
             d["businessHours"] = place["hours"]
         if place["rating"]:
             d["rating"] = place["rating"]
-        if place["reviews"]:
-            d["reviews"] = place["reviews"]
+        if place["reviews"] is not None:  # 이번에 리뷰 페이지를 확인함(없을 수도)
+            d["reviewsChecked"] = True
+            if place["reviews"]:
+                d["reviews"] = place["reviews"]
         if len(d) > 1:
             details.append(d)
         p = rep_price(menus, t.get("category"))

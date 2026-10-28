@@ -4,13 +4,13 @@ name: price-sync
 # 매 런 다른 러너 IP + 시간예산 → 차단 회피. price_synced_at 도장으로 큐처럼 순환.
 on:
   schedule:
-    - cron: "17,47 * * * *" # 30분마다(매번 다른 러너 IP). 수율이 IP에 막혀서 런 횟수=새IP가 레버.
+    - cron: "17,47 * * * *" # 30분마다. 네이버 IP당 요청 한도 안에서만 받고(429 나면 바로 종료) 러너는 1대.
   workflow_dispatch:
     inputs:
       batch:
-        description: "이번 런 처리량(기본 1500)"
+        description: "이번 런 처리량(기본 200)"
         required: false
-        default: "1500"
+        default: "200"
 
 concurrency:
   group: price-sync
@@ -20,23 +20,23 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     timeout-minutes: 15 # 스크랩 예산 10분 + 저장 여유
-    # 샵당 요청이 2장(홈 + 리뷰)이 돼서 러너 2대로 나눈다(각자 다른 IP, 큐를 번갈아 나눠 가짐).
+    # 러너 1대. 한도를 피하려고 러너(IP)를 늘리지 않는다 — 대신 리뷰는 7일에 한 번, 손님 눈에 띄는 샵 우선(백엔드 price-targets).
     strategy:
       fail-fast: false
       matrix:
-        part: [0, 1]
+        part: [0]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Sync prices·hours·rating·reviews ← Naver (part ${{ matrix.part }}/2)
+      - name: Sync prices·hours·rating·reviews ← Naver
         env:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
-          PRICE_BATCH: ${{ github.event.inputs.batch || '1500' }}
-          PRICE_WORKERS: "3"
+          PRICE_BATCH: ${{ github.event.inputs.batch || '200' }}
+          PRICE_WORKERS: "2"
           BUDGET_SEC: "600"
           PART: ${{ matrix.part }}
-          PARTS: "2"
+          PARTS: "1"
         run: python scraper/price_sync.py
