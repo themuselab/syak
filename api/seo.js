@@ -63,6 +63,19 @@ function appBlock(cat, region, slug, placement) {
     `<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.4 12.6c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.1-.8 1.5 0 1.9.8 3.2.8 1.3 0 2.2-1.2 3-2.4.9-1.4 1.3-2.7 1.3-2.8-.1 0-2.5-1-2.5-3.9zM14 5.5c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1.1.1 2.1-.6 2.8-1.4z"/></svg>` +
     `App Store에서 받기</a></div>`;
 }
+// 사장님 유입: 이 페이지를 검색해 들어온 매장 사장님 → 사장님 사이트 업종별 노쇼·빈자리 가이드.
+// 다른 도메인(owner.)이라 utm으로 출처를 남긴다(같은 도메인 앱 CTA와 달리 세션 왜곡 문제 없음).
+function ownerBlock(cat, region, slug, placement) {
+  const place = CATEGORIES[cat].place;
+  const q = new URLSearchParams({ utm_source: "syak_web", utm_medium: "referral", utm_campaign: "seo_owner", utm_content: `${cat}-${slug}` });
+  const on = `gtag('event','seo_owner_click',{category:'${cat}',region:${JSON.stringify(region)},region_slug:${JSON.stringify(slug)},placement:'${placement}'})`;
+  return `<a class="owner" href="https://owner.themuselab.kr/guide/${cat}/?${q}" onclick="${esc(on)}">` +
+    `<b>${esc(region === "전국" ? place : `${region} ${place}`)} 사장님이신가요?</b>` +
+    `<span>예약 취소·노쇼로 생긴 빈자리, 대기 손님에게 알려 바로 채우세요 →</span></a>`;
+}
+const OWNER_CSS = `.owner{display:block;border:1px solid #ececf0;border-radius:14px;padding:13px 15px;margin:26px 0 0;text-decoration:none;color:inherit}` +
+  `.owner b{display:block;font-size:14px;color:#333}.owner span{display:block;font-size:13px;color:#ec4899;margin-top:2px}`;
+
 // 안드로이드면 앱 블록 숨김(스크립트 꺼져 있으면 그냥 보임 — 무해)
 const APP_HIDE_ANDROID = `<script>if(/Android/i.test(navigator.userAgent))document.querySelectorAll('[data-app]').forEach(function(e){e.style.display='none'})</script>`;
 const APP_BANNER_META = `<meta name="apple-itunes-app" content="app-id=${IOS_APP_ID}">`;
@@ -285,6 +298,7 @@ ul{list-style:none;padding:0;margin:0}.card{border-top:1px solid #f1f1f3}.card a
 .fresh{font-size:12px;color:#b9739a;margin:2px 0 0}
 .src{font-size:12px;color:#aaa;margin:18px 0 0;line-height:1.7}
 footer{margin-top:30px;font-size:12px;color:#aaa}
+${OWNER_CSS}
 .car{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;margin:6px -16px 0;padding:4px 16px 10px;scroll-padding-left:16px;-webkit-overflow-scrolling:touch}
 .car li{flex:0 0 150px;scroll-snap-align:start}.car a{display:block;text-decoration:none;color:inherit}
 .car img{display:block;width:150px;height:150px;object-fit:cover;border-radius:12px;background:#f4f4f5}
@@ -313,6 +327,7 @@ ${appBlock(cat, gu, sl, "region")}
 ${popHtml}
 <h2>자주 묻는 질문</h2>
 <dl class="faq">${faqHtml}</dl>
+${ownerBlock(cat, gu, sl, "region")}
 <div class="links"><b style="color:#666">다른 지역 ${esc(label)}</b> · <a href="/${cat}/" style="color:#ec4899;font-weight:600">전국 ${esc(place)} 전체보기</a><br>${links}</div>
 <p class="src">이 페이지의 가격·예약 정보는 <b>샥(syak)</b>이 ${esc(gu)}의 ${esc(place)}을 직접 수집·집계한 1차 데이터입니다. ${esc(freshLabel)} 기준이며, 실시간 예약 빈자리는 샥에서 확인할 수 있습니다.</p>
 <footer>샥(syak) · 지금 예약 되는 동네 뷰티샵 · <a href="${SITE}" style="color:#aaa">themuselab.kr</a></footer>
@@ -378,6 +393,7 @@ h1{font-size:24px;margin:8px 0 6px}.sub{color:#666;font-size:14px;margin:0 0 14p
 h2{font-size:17px;margin:26px 0 6px}
 footer{margin-top:30px;font-size:12px;color:#aaa}
 ${APP_CSS}
+${OWNER_CSS}
 </style></head>
 <body><div class="wrap">
 <h1>전국 ${esc(place)} · 지역별 당일 예약 가격비교</h1>
@@ -387,6 +403,7 @@ ${APP_CSS}
 <h2>지역별 ${esc(place)}</h2>
 <p class="regions">${regionLinks}</p>
 ${appBlock(cat, "전국", "hub", "hub")}
+${ownerBlock(cat, "전국", "hub", "hub")}
 <footer>샥(syak) · 지금 예약 되는 동네 뷰티샵 · <a href="${SITE}" style="color:#aaa">themuselab.kr</a></footer>
 </div>${APP_HIDE_ANDROID}</body></html>`;
 }

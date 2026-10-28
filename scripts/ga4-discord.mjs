@@ -31,6 +31,19 @@ async function metric(metricName, { start, end = 'today', event } = {}) {
   return num(res.rows?.[0]?.metricValues?.[0]?.value);
 }
 
+// 호스트(사장님 사이트 owner.themuselab.kr 등)로 거른 지표. 같은 GA4 속성을 소비자·사장님이 같이 쓴다.
+async function hostMetric(metricName, host, { start, end = 'today', event } = {}) {
+  const host_ = { filter: { fieldName: 'hostName', stringFilter: { value: host } } };
+  const ev = event ? { filter: { fieldName: 'eventName', stringFilter: { value: event } } } : null;
+  const [res] = await client.runReport({
+    property: PROPERTY,
+    dateRanges: [{ startDate: start, endDate: end }],
+    metrics: [{ name: metricName }],
+    dimensionFilter: ev ? { andGroup: { expressions: [host_, ev] } } : host_,
+  });
+  return num(res.rows?.[0]?.metricValues?.[0]?.value);
+}
+
 async function top(dimension, metricName, { start, end = 'today', event, limit = 5 } = {}) {
   const [res] = await client.runReport({
     property: PROPERTY,
@@ -53,6 +66,7 @@ const [
   topShops, acq,
   ySeoLand, ySeoCta, w7SeoLand, w7SeoCta, topSeoPages,
   yAppClick, w7AppClick, appByPlacement,
+  w7OwnerUsers, w7OwnerFromSeo, w7OwnerCta, w7OwnerInquiry, ownerPages,
 ] = await Promise.all([
   metric('activeUsers', YtoD),
   metric('sessions', YtoD),
@@ -77,6 +91,12 @@ const [
   metric('eventCount', { ...YtoD, event: 'app_install_click' }),
   metric('eventCount', { start: '7daysAgo', event: 'app_install_click' }),
   top('pagePath', 'eventCount', { start: '7daysAgo', event: 'app_install_click', limit: 5 }),
+  // 사장님 유입: 사장님 사이트 방문자, 손님 지역 페이지 → 사장님 가이드 클릭, 시작/문의 버튼, 도입 문의 제출
+  hostMetric('activeUsers', 'owner.themuselab.kr', { start: '7daysAgo' }),
+  metric('eventCount', { start: '7daysAgo', event: 'seo_owner_click' }),
+  hostMetric('eventCount', 'owner.themuselab.kr', { start: '7daysAgo', event: 'owner_cta_click' }),
+  hostMetric('eventCount', 'owner.themuselab.kr', { start: '7daysAgo', event: 'owner_inquiry_submit' }),
+  top('pagePath', 'eventCount', { start: '7daysAgo', event: 'owner_landing', limit: 5 }),
 ]);
 
 const convRate = m30Views ? ((m30Reserve / m30Views) * 100).toFixed(1) + '%' : '-';
@@ -168,6 +188,16 @@ const appField = {
   inline: false,
 };
 
+const ownerField = {
+  name: '🧑‍💼 사장님 유입 (7일)',
+  value: `사장님 사이트 방문 ${w7OwnerUsers.toLocaleString()}명 · 손님 지역페이지→사장님 가이드 클릭 ${w7OwnerFromSeo.toLocaleString()}`
+       + `
+시작·문의 버튼 ${w7OwnerCta.toLocaleString()} · 도입 문의 제출 ${w7OwnerInquiry.toLocaleString()}`
+       + (ownerPages.length ? `
+가이드 조회: ${ownerPages.map(p => `${p.key} ${p.value}`).join(' · ')}` : ''),
+  inline: false,
+};
+
 const embed = {
   title: '📊 GA4 일일 리포트 (샥)',
   color: 0xec4899,
@@ -178,6 +208,7 @@ const embed = {
     { name: '인기 샵 Top5 (7일, 상세조회)', value: shopLines, inline: false },
     seoField,
     appField,
+    ownerField,
     { name: '유입 채널 Top5 (7일, 세션)', value: acqLines, inline: false },
     ...partnerField,
   ],
@@ -190,7 +221,8 @@ console.log(`GA4: 어제 활성 ${yUsers} · 30일 MAU ${m30Users} · 예약클�
 console.log(`유입 채널(7일):
 ${acqLines}
 ${seoField.value}
-${appField.value}`);
+${appField.value}
+${ownerField.value}`);
 
 if (process.env.DRY_RUN === '1') { console.log('(DRY_RUN — 디스코드 전송 안 함)'); process.exit(0); }
 if (!WEBHOOK) { console.error('⚠️ DISCORD_WEBHOOK 없음 — 콘솔 출력만'); process.exit(0); }
