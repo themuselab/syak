@@ -136,7 +136,7 @@ function render(cat, gu, entry, catData, nowIso, freshLabel) {
         `<li><a href="${deepLink(lg, cat, gu)}" rel="nofollow" ` +
           `onclick="gtag('event','seo_cta_click',{category:'${cat}',region:${JSON.stringify(gu)},placement:'carousel'})">` +
           `<img src="${esc(s.ph)}" alt="${esc(`${gu} ${place} ${s.name}`)}" width="150" height="150"` +
-          `${i < 2 ? "" : ' loading="lazy"'} decoding="async" referrerpolicy="no-referrer">` +
+          `${i < 2 ? "" : ' loading="lazy"'} decoding="async" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src='/fallback.png'">` +
           `<span class="cn">${esc(s.name)}</span>` +
           `<span class="cm">${esc(won(s.min) ? `${won(s.min)}~` : s.tier || "")}${s.today ? " · <em>오늘 예약</em>" : ""}</span>` +
         `</a></li>`).join("") +
