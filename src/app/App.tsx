@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { SheetRef } from "react-modal-sheet";
 import { useCatalog } from "../contexts/catalog/ui/hooks/useCatalog";
 import { MapView as MapViewKakao } from "../contexts/catalog/ui/MapView";
@@ -7,12 +7,8 @@ import { MapViewNaver } from "../contexts/catalog/ui/MapViewNaver";
 const MapView = import.meta.env.VITE_MAP_PROVIDER === "kakao" ? MapViewKakao : MapViewNaver;
 import { CollectionChips, type ChipKey } from "../contexts/catalog/ui/CollectionChips";
 import { ShopListSheet } from "../contexts/catalog/ui/ShopListSheet";
-import { ShopDetailSheet } from "../contexts/catalog/ui/ShopDetailSheet";
-import { FilterModal } from "../contexts/catalog/ui/FilterModal";
-import { RegionPicker } from "../contexts/catalog/ui/RegionPicker";
 import { ActiveFilters } from "../contexts/catalog/ui/ActiveFilters";
-import { CustomFindModal, type CustomFind } from "../contexts/catalog/ui/CustomFindModal";
-import { MissedAlertSheet } from "../contexts/lead/ui/MissedAlertSheet";
+import type { CustomFind } from "../contexts/catalog/ui/CustomFindModal";
 import { SnapSheet } from "../shared/ui/SnapSheet";
 import { ShopListSkeleton } from "../shared/ui/Skeleton";
 import { usecases } from "./composition-root";
@@ -22,6 +18,24 @@ import { isReturningVisitor } from "../shared/platform/visitor";
 import { distanceMeters, type Coordinate } from "../shared/domain/coordinate";
 import type { ShopSummary, ShopPin } from "../contexts/catalog/domain/shop";
 import type { FilterCriteria } from "../contexts/catalog/domain/filters";
+
+// 오버레이(상세·필터·지역·맞춤찾기·알림)는 첫 화면에 안 보임 → 별도 청크로 분리해 초기 JS 축소.
+// 첫 탭 지연이 없도록 마운트 후 idle 때 미리 받아둔다(preloadOverlays).
+const loadShopDetail = () => import("../contexts/catalog/ui/ShopDetailSheet");
+const loadFilter = () => import("../contexts/catalog/ui/FilterModal");
+const loadRegion = () => import("../contexts/catalog/ui/RegionPicker");
+const loadCustomFind = () => import("../contexts/catalog/ui/CustomFindModal");
+const loadMissedAlert = () => import("../contexts/lead/ui/MissedAlertSheet");
+const ShopDetailSheet = lazy(() => loadShopDetail().then((m) => ({ default: m.ShopDetailSheet })));
+const FilterModal = lazy(() => loadFilter().then((m) => ({ default: m.FilterModal })));
+const RegionPicker = lazy(() => loadRegion().then((m) => ({ default: m.RegionPicker })));
+const CustomFindModal = lazy(() => loadCustomFind().then((m) => ({ default: m.CustomFindModal })));
+const MissedAlertSheet = lazy(() => loadMissedAlert().then((m) => ({ default: m.MissedAlertSheet })));
+function preloadOverlays() {
+  void Promise.all([loadShopDetail(), loadFilter(), loadRegion(), loadCustomFind(), loadMissedAlert()]).catch(() => {
+    /* 무시 — 열 때 lazy가 다시 요청 */
+  });
+}
 
 function applyChip(list: ShopSummary[], chip: ChipKey | null): ShopSummary[] {
   if (!chip) return list;
@@ -79,6 +93,16 @@ export default function App() {
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
+  }, []);
+
+  // 오버레이 청크 선로딩 — 첫 렌더·지도 로드와 경쟁하지 않게 브라우저 idle 때
+  useEffect(() => {
+    if ("requestIdleCallback" in window) {
+      const id = window.requestIdleCallback(preloadOverlays, { timeout: 3000 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const t = setTimeout(preloadOverlays, 1500); // Safari: rIC 없음
+    return () => clearTimeout(t);
   }, []);
 
   // 맞춤찾기(시간) → 그 시간 빈 샵 id 조회
@@ -401,24 +425,28 @@ export default function App() {
         </SnapSheet>
       )}
 
-      {/* 오버레이 */}
+      {/* 오버레이 (lazy — 청크 도착 전 잠깐은 아무것도 안 그림). 경계를 각자 둬서 하나가 로딩 중이어도 다른 오버레이는 안 가려짐 */}
       {selectedId && (
-        <ShopDetailSheet
-          shopId={selectedId}
-          onClose={() => setSelectedId(null)}
-          onReserveClick={(shopId, route, meta) => usecases.analytics.track({ event: "reserve_click", shopId, route: route.type, slotDate: meta?.slot?.date, slotTime: meta?.slot?.time, shopDistrict: meta?.district, shopCategory: meta?.category })}
-        />
+        <Suspense fallback={null}>
+          <ShopDetailSheet
+            shopId={selectedId}
+            onClose={() => setSelectedId(null)}
+            onReserveClick={(shopId, route, meta) => usecases.analytics.track({ event: "reserve_click", shopId, route: route.type, slotDate: meta?.slot?.date, slotTime: meta?.slot?.time, shopDistrict: meta?.district, shopCategory: meta?.category })}
+          />
+        </Suspense>
       )}
       {filterOpen && (
-        <FilterModal
-          initial={filter}
-          onApply={(c) => { setFilter(c); usecases.analytics.track({ event: "filter_apply", source: filterSummary(c) }); }}
-          onClose={() => setFilterOpen(false)}
-        />
+        <Suspense fallback={null}>
+          <FilterModal
+            initial={filter}
+            onApply={(c) => { setFilter(c); usecases.analytics.track({ event: "filter_apply", source: filterSummary(c) }); }}
+            onClose={() => setFilterOpen(false)}
+          />
+        </Suspense>
       )}
-      {regionOpen && <RegionPicker selected={filter.gus ?? []} onApply={selectRegions} onClose={() => setRegionOpen(false)} />}
-      {findOpen && <CustomFindModal onApply={setCustomFind} onClose={() => setFindOpen(false)} />}
-      {leadOpen && <MissedAlertSheet onClose={() => setLeadOpen(false)} />}
+      {regionOpen && <Suspense fallback={null}><RegionPicker selected={filter.gus ?? []} onApply={selectRegions} onClose={() => setRegionOpen(false)} /></Suspense>}
+      {findOpen && <Suspense fallback={null}><CustomFindModal onApply={setCustomFind} onClose={() => setFindOpen(false)} /></Suspense>}
+      {leadOpen && <Suspense fallback={null}><MissedAlertSheet onClose={() => setLeadOpen(false)} /></Suspense>}
     </div>
   );
 }

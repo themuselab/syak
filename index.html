@@ -6,6 +6,9 @@
     <meta name="naver-site-verification" content="b3469c587392d682ab086588872f85cef147bfd5" />
     <meta name="google-site-verification" content="4eukcBT3CMyy92wOi9ASxHCBBgFWx-VedPVsIa38IWo" />
     <link rel="icon" type="image/png" href="/icon.png" />
+    <!-- 첫 화면 필수 원본 미리 연결: 지도 SDK·샵 API는 JS 실행 후에야 요청돼서 DNS/TLS를 앞당김 -->
+    <link rel="preconnect" href="https://oapi.map.naver.com" />
+    <link rel="preconnect" href="https://api.themuselab.kr" crossorigin />
 
     <title>샥 · 지금 예약 되는 동네 뷰티샵</title>
     <meta name="description" content="내일 오후 2시 강남에 예약 빈 네일샵은? 시간·지역·분야로 필터해 지금 예약 가능한 뷰티샵을 지도에서 찾고, 리뷰·사진·가격 보고 바로 예약하세요." />

@@ -4,8 +4,9 @@ import type { Bounds } from "../ports/shop-repository";
 import { CATEGORY_COLORS } from "./theme";
 import { SEOUL_CENTER, type Coordinate } from "../../../shared/domain/coordinate";
 // 네이버 공식 클러스터링 소스 — ESM으로 정적 import 불가(로드시 naver.maps.Util.ClassExtend 호출).
-// 문자열로 받아 SDK 로드 후 <script>로 평가한다. (useNaverLoader 참고)
-import markerClusteringSource from "../../../shared/vendor/MarkerClustering.js?raw";
+// 문자열로 받아 SDK 로드 후 <script>로 평가한다. (loadNaverMaps 참고)
+// 메인 번들에서 빼려고 동적 import(?raw) — SDK 다운로드와 병렬로 받으니 추가 대기 없음.
+const loadClusterSource = () => import("../../../shared/vendor/MarkerClustering.js?raw").then((m) => m.default);
 
 // 네이버 SDK/클러스터링은 런타임 글로벌 — 타입 느슨하게 (카카오판의 KakaoAny와 동일 전략).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -95,16 +96,27 @@ function loadNaverMaps(clientId: string): Promise<void> {
   if (naverLoadPromise) return naverLoadPromise;
   naverLoadPromise = new Promise<void>((resolve, reject) => {
     const w = window as NaverAny;
+    // 클러스터링 소스 청크는 SDK와 동시에 요청 시작(직렬 대기 방지)
+    const clusterSource = w.MarkerClustering ? null : loadClusterSource();
+    clusterSource?.catch(() => {}); // 실패는 evalCluster에서 reject로 처리 — 미처리 rejection 경고 방지
     // 2) SDK 준비 후 클러스터링 소스를 <script>로 평가 (naver.maps 글로벌이 있어야 함)
     const evalCluster = () => {
-      if (!w.MarkerClustering) {
-        const s = document.createElement("script");
-        s.type = "text/javascript";
-        s.textContent = markerClusteringSource;
-        document.head.appendChild(s);
+      if (!clusterSource) {
+        resolve();
+        return;
       }
-      if (w.MarkerClustering) resolve();
-      else reject(new Error("MarkerClustering eval failed"));
+      clusterSource
+        .then((src) => {
+          if (!w.MarkerClustering) {
+            const s = document.createElement("script");
+            s.type = "text/javascript";
+            s.textContent = src;
+            document.head.appendChild(s);
+          }
+          if (w.MarkerClustering) resolve();
+          else reject(new Error("MarkerClustering eval failed"));
+        })
+        .catch(reject);
     };
     // 이미 로드돼 있으면 바로 진행
     if (w.naver?.maps) {

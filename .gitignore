@@ -39,3 +39,8 @@ scraper/__pycache__/
 *.pyc
 scraper/events_cache.json
 scraper/*.log
+
+# Archify 스킬(18MB) — 저장소엔 skills-lock.json만 두고 각자 `npx skills add tt-a1i/archify -a claude-code`로 설치
+.claude/skills/archify/
+# 수집 진단 스크립트가 저장하는 응답 표본
+scraper/diag_samples/
