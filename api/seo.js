@@ -70,8 +70,8 @@ function ownerBlock(cat, region, slug, placement) {
   const q = new URLSearchParams({ utm_source: "syak_web", utm_medium: "referral", utm_campaign: "seo_owner", utm_content: `${cat}-${slug}` });
   const on = `gtag('event','seo_owner_click',{category:'${cat}',region:${JSON.stringify(region)},region_slug:${JSON.stringify(slug)},placement:'${placement}'})`;
   return `<a class="owner" href="https://owner.themuselab.kr/guide/${cat}/?${q}" onclick="${esc(on)}">` +
-    `<b>${esc(region === "전국" ? place : `${region} ${place}`)} 사장님이신가요?</b>` +
-    `<span>예약 취소·노쇼로 생긴 빈자리, 대기 손님에게 알려 바로 채우세요 →</span></a>`;
+    `<b>${esc(region === "전국" ? place : `${region} ${place}`)} 사장님, 노쇼 난 자리 그냥 비워두시나요?</b>` +
+    `<span>취소석 30초 등록 → ${esc(region === "전국" ? "근처" : region)}에서 ${esc(place)} 찾는 손님에게 바로 알림 →</span></a>`;
 }
 const OWNER_CSS = `.owner{display:block;border:1px solid #ececf0;border-radius:14px;padding:13px 15px;margin:26px 0 0;text-decoration:none;color:inherit}` +
   `.owner b{display:block;font-size:14px;color:#333}.owner span{display:block;font-size:13px;color:#ec4899;margin-top:2px}`;
