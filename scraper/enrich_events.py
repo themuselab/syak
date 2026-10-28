@@ -40,7 +40,7 @@ BUDGET_SEC = int(ENV.get("BUDGET_SEC", "840"))  # 시간예산 14분 — 넘으�
 WORKERS = int(ENV.get("EVENT_WORKERS", "3"))
 GAP_MIN = float(ENV.get("EVENT_GAP_SEC", "0.35"))  # 러너 전체 요청 간격 하한(초)
 GAP_MAX = 3.0
-COOLDOWN_SEC = 15
+COOLDOWN_SEC = 4  # 15초는 쉬는 시간이 예산의 대부분을 먹었다(막힘 ~50회×15초) → 짧게 자주
 
 
 class Pace:

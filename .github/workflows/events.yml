@@ -2,7 +2,7 @@ name: event-ingest
 
 on:
   schedule:
-    - cron: "30 18 * * *" # 매일 1회 (UTC 18:30 = KST 03:30) — 할인/이벤트 갱신
+    - cron: "30 */3 * * *" # 3시간마다. 속도 제한 때문에 한 번에 샤드당 ~500곳만 → 횟수로 전체(~3.3만 곳)를 돈다
   workflow_dispatch: {} # 수동 실행 버튼
 
 concurrency:

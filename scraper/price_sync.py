@@ -12,7 +12,7 @@
 
 env: SUPABASE_URL, SUPABASE_SECRET_KEY (.env 또는 Actions Secrets)
 """
-import json, os, re, sys, time, random, urllib.request, urllib.error
+import json, os, re, sys, threading, time, random, urllib.request, urllib.error
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -34,7 +34,7 @@ if not API_BASE or not API_KEY:
     raise SystemExit("API_BASE_URL/INTERNAL_API_KEY 필요")
 
 BATCH = int(ENV.get("PRICE_BATCH", "1500"))     # 이번 런에서 시도할 최대 샵 수(시간예산이 더 빨리 끊기도 함)
-WORKERS = int(ENV.get("PRICE_WORKERS", "3"))    # 동시 요청 — 낮게(네이버 throttle 회피)
+WORKERS = int(ENV.get("PRICE_WORKERS", "2"))    # 동시 요청 — 낮게(네이버 throttle 회피)
 BUDGET_SEC = int(ENV.get("BUDGET_SEC", "600"))  # 10분 (job timeout보다 짧게)
 # 러너 여러 대가 같은 큐(가장 오래된 순)를 받아 번갈아 나눠 갖는다(PART번째, PARTS대).
 PART = int(ENV.get("PART", "0"))
@@ -111,9 +111,40 @@ def api(method, path, payload=None, tries=4):
     raise last
 
 
+# 속도 조절 — 차단 원인은 IP가 아니라 속도(2026-10-28 진단 scraper/diag_place.py: 같은 러너에서 하나씩 0.5초 간격 40/40 성공).
+# 러너 전체 요청 간격을 두고, 막히면 잠깐 멈추고 간격을 늘린다(성공이 이어지면 다시 줄임).
+GAP_MIN = float(ENV.get("PRICE_GAP_SEC", "0.6"))
+GAP_MAX, COOLDOWN_SEC = 4.0, 4
+
+
+class Pace:
+    def __init__(self):
+        self.gap, self.next_at, self.lock, self.blocks = GAP_MIN, 0.0, threading.Lock(), 0
+
+    def wait(self):
+        with self.lock:
+            now = time.time()
+            at = max(now, self.next_at)
+            self.next_at = at + self.gap
+        time.sleep(max(0.0, at - now))
+
+    def ok(self):
+        with self.lock:
+            self.gap = max(GAP_MIN, self.gap * 0.97)
+
+    def blocked(self):
+        with self.lock:
+            self.blocks += 1
+            self.gap = min(GAP_MAX, self.gap * 1.5)
+            self.next_at = max(self.next_at, time.time() + COOLDOWN_SEC)
+
+
+PACE = Pace()
+
+
 def fetch_state(url):
     """네이버 place 페이지의 __APOLLO_STATE__. 차단/실패면 None."""
-    time.sleep(0.6 + random.random() * 1.0)  # 낮은 req/s 유지(차단 회피)
+    PACE.wait()
     html = None
     for attempt in range(2):  # 네트워크 예외만 1회 재시도 (차단은 재시도 안 함)
         try:
@@ -128,7 +159,9 @@ def fetch_state(url):
     key = "window.__APOLLO_STATE__ = "
     i = html.find(key)
     if i < 0:
-        return None  # 차단 페이지 or 비정상 → 재시도 대상
+        PACE.blocked()
+        return None  # 속도 제한 페이지 or 비정상 → 다음 런 재시도
+    PACE.ok()
     try:
         obj, _ = DEC.raw_decode(html, i + len(key))
     except Exception:
@@ -283,7 +316,7 @@ def main():
         except Exception as e:
             print(f"   ⚠️ 상세 저장 실패: {e}")
     elapsed = time.time() - t0
-    print(f"✅ 갱신 {up}곳 | 성공 {ok} 차단/실패 {blocked} | {elapsed:.0f}초")
+    print(f"✅ 갱신 {up}곳 | 성공 {ok} 차단/실패 {blocked}(속도제한 {PACE.blocks}) | 최종 간격 {PACE.gap:.2f}s | {elapsed:.0f}초")
     print(f"   상세 {dup}곳 (영업시간 {sum(1 for d in details if 'businessHours' in d)} · "
           f"평점 {sum(1 for d in details if 'rating' in d)} · 리뷰 {sum(1 for d in details if 'reviews' in d)})")
     for k in ["1만원대", "2만원대", "3만원대", "4만원이상", "미정"]:
