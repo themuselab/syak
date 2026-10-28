@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { color, radius, button, selectChip, sheetTitle, sectionTitle } from "../../../shared/ui/tokens";
 
 export type CustomFind = {
   date: string; // "2026-06-07"
@@ -47,22 +48,22 @@ export function CustomFindModal({ onApply, onClose }: Props) {
   }
 
   return (
-    <div style={{ position: "absolute", inset: 0, zIndex: 50, background: "rgba(0,0,0,.35)" }} onClick={onClose}>
+    <div style={{ position: "absolute", inset: 0, zIndex: 50, background: color.overlay.dim }} onClick={onClose}>
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "#fff", borderRadius: "18px 18px 0 0", padding: 22, maxHeight: "80vh", overflowY: "auto" }}
+        style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: color.white, borderRadius: `${radius.lg}px ${radius.lg}px 0 0`, padding: 20, maxHeight: "80vh", overflowY: "auto" }}
       >
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-          <h2 style={{ fontSize: 18, fontWeight: 800, margin: "0 0 4px" }}>빈자리 찾기</h2>
+          <h2 style={{ ...sheetTitle, margin: "0 0 4px" }}>빈자리 찾기</h2>
           <button
             onClick={onClose}
             aria-label="닫기"
-            style={{ border: "none", background: "#f2f2f4", color: "#888", width: 30, height: 30, borderRadius: 15, fontSize: 17, lineHeight: 1, cursor: "pointer", flexShrink: 0 }}
+            style={{ border: "none", background: color.gray[100], color: color.gray[700], width: 30, height: 30, borderRadius: 15, fontSize: 15, lineHeight: 1, cursor: "pointer", flexShrink: 0 }}
           >
             ✕
           </button>
         </div>
-        <p style={{ fontSize: 13, color: "#888", margin: "0 0 18px" }}>원하는 날짜·시간에 예약 가능한 샵을 찾아드려요</p>
+        <p style={{ fontSize: 14, color: color.text.hint, margin: "0 0 20px" }}>원하는 날짜·시간에 예약 가능한 샵을 찾아드려요</p>
 
         <Group title="날짜">
           {dayOptions.map((d, i) => {
@@ -86,7 +87,7 @@ export function CustomFindModal({ onApply, onClose }: Props) {
         <button
           onClick={apply}
           disabled={!hours.length}
-          style={{ marginTop: 22, padding: 15, width: "100%", borderRadius: 14, border: "none", background: hours.length ? "#ec4899" : "#f0c8da", color: "#fff", fontWeight: 800, fontSize: 15 }}
+          style={{ ...button("primary", !hours.length), marginTop: 8, width: "100%" }}
         >
           {hours.length ? `이 시간에 가능한 샵 찾기 (${hours.length})` : "시간을 선택하세요"}
         </button>
@@ -97,27 +98,17 @@ export function CustomFindModal({ onApply, onClose }: Props) {
 
 function Group({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div style={{ marginBottom: 18 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: "#666", marginBottom: 9 }}>{title}</div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>{children}</div>
+    <div style={{ marginBottom: 24 }}>
+      <div style={sectionTitle}>{title}</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{children}</div>
     </div>
   );
 }
 
 function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button
-      onClick={onClick}
-      style={{
-        padding: "9px 14px",
-        borderRadius: 20,
-        border: active ? "1.5px solid #ec4899" : "1.5px solid #e5e5e5",
-        background: active ? "#fdeef2" : "#fff",
-        color: active ? "#ec4899" : "#555",
-        fontSize: 13,
-        fontWeight: 600,
-      }}
-    >
+    // 앱 SelectChip(예약시간 칩): 선택 시 테두리·글씨만 핑크
+    <button onClick={onClick} style={selectChip(active)}>
       {children}
     </button>
   );

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { color, radius, button, selectChip, sheetTitle, sectionTitle } from "../../../shared/ui/tokens";
 import type { FilterCriteria } from "../domain/filters";
 import { SORT_OPTIONS } from "../domain/filters";
 import type { PriceTier } from "../domain/shop";
@@ -41,7 +42,7 @@ export function FilterModal({ initial, onApply, onClose }: Props) {
     }));
 
   return (
-    <div style={{ position: "absolute", inset: 0, zIndex: 50, background: "rgba(0,0,0,.35)" }} onClick={onClose}>
+    <div style={{ position: "absolute", inset: 0, zIndex: 50, background: color.overlay.dim }} onClick={onClose}>
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
@@ -50,7 +51,7 @@ export function FilterModal({ initial, onApply, onClose }: Props) {
           left: 0,
           right: 0,
           background: "#fff",
-          borderRadius: "18px 18px 0 0",
+          borderRadius: `${radius.lg}px ${radius.lg}px 0 0`,
           padding: 20,
           maxHeight: "80vh",
           overflowY: "auto",
@@ -58,7 +59,7 @@ export function FilterModal({ initial, onApply, onClose }: Props) {
           WebkitOverflowScrolling: "touch",
         }}
       >
-        <h2 style={{ fontSize: 17, fontWeight: 800, margin: "0 0 16px" }}>필터</h2>
+        <h2 style={{ ...sheetTitle, textAlign: "center", paddingBottom: 12, margin: "0 -20px 20px", borderBottom: `1px solid ${color.line.divider}` }}>필터</h2>
 
         <Group title="정렬">
           {SORT_OPTIONS.map((o) => (
@@ -108,10 +109,10 @@ export function FilterModal({ initial, onApply, onClose }: Props) {
           </Chip>
         </Group>
 
-        <div style={{ display: "flex", gap: 8, marginTop: 24 }}>
+        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
           <button
             onClick={() => setDraft({ gus: initial.gus, sortBy: initial.sortBy })}
-            style={{ flex: 1, padding: 14, borderRadius: 12, border: "1px solid #ddd", background: "#fff", fontWeight: 700 }}
+            style={{ ...button("secondary"), flex: 1 }}
           >
             초기화
           </button>
@@ -120,7 +121,7 @@ export function FilterModal({ initial, onApply, onClose }: Props) {
               onApply(draft);
               onClose();
             }}
-            style={{ flex: 2, padding: 14, borderRadius: 12, border: "none", background: "#ec4899", color: "#fff", fontWeight: 700 }}
+            style={{ ...button("primary"), flex: 2 }}
           >
             적용하기
           </button>
@@ -132,27 +133,17 @@ export function FilterModal({ initial, onApply, onClose }: Props) {
 
 function Group({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div style={{ marginBottom: 18 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: "#666", marginBottom: 8 }}>{title}</div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>{children}</div>
+    <div style={{ marginBottom: 28 }}>
+      <div style={sectionTitle}>{title}</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{children}</div>
     </div>
   );
 }
 
 function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button
-      onClick={onClick}
-      style={{
-        padding: "8px 14px",
-        borderRadius: 20,
-        border: active ? "1.5px solid #ec4899" : "1.5px solid #e5e5e5",
-        background: active ? "#fdeef6" : "#fff",
-        color: active ? "#ec4899" : "#555",
-        fontSize: 13,
-        fontWeight: 600,
-      }}
-    >
+    // 앱 SelectChip: 선택 시 테두리·글씨만 핑크
+    <button onClick={onClick} style={selectChip(active)}>
       {children}
     </button>
   );

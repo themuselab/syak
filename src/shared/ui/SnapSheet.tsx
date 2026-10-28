@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useRef, type ReactNode } from "react";
 import { Sheet, type SheetRef } from "react-modal-sheet";
+import { radius, shadow } from "./tokens";
 
 type Props = {
   children: ReactNode;
@@ -48,7 +49,8 @@ export const SnapSheet = forwardRef<SheetRef, Props>(function SnapSheet(
       style={{ zIndex: 20, position: "absolute" }}
     >
       <Sheet.Container
-        style={{ borderRadius: "18px 18px 0 0", boxShadow: "0 -4px 24px rgba(0,0,0,.12)" }}
+        // 앱 홈 바텀시트: 상단 radius lg(20) + 옅은 그림자
+        style={{ borderRadius: `${radius.lg}px ${radius.lg}px 0 0`, boxShadow: shadow.sheet }}
       >
         <Sheet.Header />
         <Sheet.Content>{children}</Sheet.Content>

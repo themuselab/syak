@@ -13,7 +13,8 @@ export type EventName =
   | "region_select" // 지역(구/시) 선택
   | "gallery_view" // 상세에서 포폴 사진 넘겨봄
   | "menu_view" // 상세에서 메뉴·가격 더보기
-  | "filter_apply";
+  | "filter_apply"
+  | "app_open_click"; // "앱으로 보기" 클릭 (placement=위치, store=ios|web)
 
 export type EntryRoute = "organic" | "campaign" | "deeplink" | "share";
 
@@ -28,4 +29,6 @@ export interface AnalyticsEvent {
   ms?: number; // dwell 또는 time-to-click
   slotDate?: string; // reserve_click: 클릭한 슬롯 날짜 (전환 추적용)
   slotTime?: string; // reserve_click: 클릭한 슬롯 시간 "14:00"
+  placement?: string; // app_open_click: 버튼 위치 (예: "map_fab")
+  store?: "ios" | "web"; // app_open_click: 이동 대상 (App Store | 앱 웹 버전)
 }

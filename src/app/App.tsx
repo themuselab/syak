@@ -18,21 +18,22 @@ import { isReturningVisitor } from "../shared/platform/visitor";
 import { distanceMeters, type Coordinate } from "../shared/domain/coordinate";
 import type { ShopSummary, ShopPin } from "../contexts/catalog/domain/shop";
 import type { FilterCriteria } from "../contexts/catalog/domain/filters";
+import { CATEGORIES } from "../shared/domain/category";
+import { appLink } from "../shared/platform/app-link";
+import { color, shadow, radius, mapChip, FONT_FAMILY } from "../shared/ui/tokens";
 
-// 오버레이(상세·필터·지역·맞춤찾기·알림)는 첫 화면에 안 보임 → 별도 청크로 분리해 초기 JS 축소.
+// 오버레이(상세·필터·지역·맞춤찾기)는 첫 화면에 안 보임 → 별도 청크로 분리해 초기 JS 축소.
 // 첫 탭 지연이 없도록 마운트 후 idle 때 미리 받아둔다(preloadOverlays).
 const loadShopDetail = () => import("../contexts/catalog/ui/ShopDetailSheet");
 const loadFilter = () => import("../contexts/catalog/ui/FilterModal");
 const loadRegion = () => import("../contexts/catalog/ui/RegionPicker");
 const loadCustomFind = () => import("../contexts/catalog/ui/CustomFindModal");
-const loadMissedAlert = () => import("../contexts/lead/ui/MissedAlertSheet");
 const ShopDetailSheet = lazy(() => loadShopDetail().then((m) => ({ default: m.ShopDetailSheet })));
 const FilterModal = lazy(() => loadFilter().then((m) => ({ default: m.FilterModal })));
 const RegionPicker = lazy(() => loadRegion().then((m) => ({ default: m.RegionPicker })));
 const CustomFindModal = lazy(() => loadCustomFind().then((m) => ({ default: m.CustomFindModal })));
-const MissedAlertSheet = lazy(() => loadMissedAlert().then((m) => ({ default: m.MissedAlertSheet })));
 function preloadOverlays() {
-  void Promise.all([loadShopDetail(), loadFilter(), loadRegion(), loadCustomFind(), loadMissedAlert()]).catch(() => {
+  void Promise.all([loadShopDetail(), loadFilter(), loadRegion(), loadCustomFind()]).catch(() => {
     /* 무시 — 열 때 lazy가 다시 요청 */
   });
 }
@@ -73,7 +74,6 @@ export default function App() {
   const [mapCenter, setMapCenter] = useState<Coordinate | undefined>();
   const [myPos, setMyPos] = useState<Coordinate | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
-  const [leadOpen, setLeadOpen] = useState(false);
   const [regionOpen, setRegionOpen] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
   const [customFind, setCustomFind] = useState<CustomFind | null>(null);
@@ -177,11 +177,13 @@ export default function App() {
     const p = new URLSearchParams(window.location.search);
     const gu = p.get("gu");
     const cat = p.get("cat"); // 한글 카테고리(네일/헤어/왁싱/속눈썹)
+    // 쿼리스트링은 임의 문자열 → 알려진 카테고리일 때만 Category로 좁혀서 적용
+    const category = CATEGORIES.find((c) => c === cat);
     if (gu || cat) {
       setFilter({
         ...filter,
         ...(gu ? { gus: [gu] } : {}),
-        ...(cat ? { categories: [cat] } : {}),
+        ...(category ? { categories: [category] } : {}),
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -321,11 +323,18 @@ export default function App() {
       : `${filter.gus[0].replace(/구$/, "")} 외 ${filter.gus.length - 1}`
     : "지역";
 
+  const regionOn = !!filter.gus?.length;
+  const filterOn = !!sortLabel || activeFilterCount > 0;
+
   return (
-    <div ref={setRoot} style={{ position: "fixed", inset: 0, fontFamily: "-apple-system, 'Apple SD Gothic Neo', sans-serif", background: "#fff" }}>
-      {/* 헤더 */}
-      <header ref={headerRef} style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 25, padding: "14px 16px 10px", background: "#fff" }}>
-        <div style={{ position: "relative" }}>
+    <div ref={setRoot} style={{ position: "fixed", inset: 0, fontFamily: FONT_FAMILY, background: color.surface.map, color: color.text.strong }}>
+      {/* 헤더 — 앱 홈처럼 지도 위에 떠 있는 검색바 + 칩(배경 없음, 빈 곳은 지도 조작이 통과) */}
+      <header ref={headerRef} style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 25, padding: "12px 16px 6px", pointerEvents: "none" }}>
+        {/* 검색바 — 앱 SearchBar: 높이 44 pill, 흰 배경, primary-300 테두리, 그림자 sm, 왼쪽 심볼 */}
+        <div
+          style={{ pointerEvents: "auto", display: "flex", alignItems: "center", height: 44, boxSizing: "border-box", borderRadius: radius.full, border: `1px solid ${color.primary[300]}`, background: color.white, boxShadow: shadow.sm, paddingLeft: 4, paddingRight: 8 }}
+        >
+          <img src={`${import.meta.env.BASE_URL}brand/syak-symbol-pink.png`} alt="" width={40} height={40} style={{ flexShrink: 0, marginRight: 2 }} />
           <input
             value={query}
             onChange={(e) => {
@@ -333,64 +342,72 @@ export default function App() {
               if (e.target.value.trim()) sheetRef.current?.snapTo(0);
             }}
             placeholder="샵 이름으로 찾기"
-            style={{ width: "100%", padding: "14px 36px 14px 16px", borderRadius: 16, border: "none", background: "#f2f2f4", fontSize: 16, boxSizing: "border-box", fontWeight: 500 }}
+            style={{ flex: 1, minWidth: 0, height: "100%", padding: 0, border: "none", outline: "none", background: "transparent", fontSize: 16, color: color.gray[900] }}
           />
           {query && (
-            <button onClick={() => setQuery("")} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", border: "none", background: "transparent", color: "#aaa", fontSize: 18 }}>×</button>
+            <button onClick={() => setQuery("")} aria-label="검색어 지우기" style={{ border: "none", background: "transparent", padding: 6, display: "flex", cursor: "pointer" }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color.text.placeholder} strokeWidth={2} strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+            </button>
           )}
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 11 }}>
+        {/* 칩 줄 — 앱 CategoryChip(흰 pill + 그림자), 선택 시 앱 FilterChip 선택 상태 */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10 }}>
           {/* 지역 */}
-          <button onClick={() => setRegionOpen(true)} style={pill("dark")}>
-            {regionLabel} ▾
+          <button onClick={() => setRegionOpen(true)} style={{ ...mapChip(regionOn), pointerEvents: "auto" }}>
+            {regionLabel}
+            <Chevron color={regionOn ? color.primary[500] : color.gray[800]} />
           </button>
           {/* 필터 (정렬 선택 시 그 라벨 표시 — 기본순은 "필터" 유지) */}
-          <button onClick={() => setFilterOpen(true)} style={sortLabel ? pill("outlinePink") : pill("outline")}>
+          <button onClick={() => setFilterOpen(true)} style={{ ...mapChip(filterOn), pointerEvents: "auto" }}>
             {sortLabel ?? "필터"}
             {activeFilterCount > 0 && (
-              <span style={{ marginLeft: 6, background: "#ec4899", color: "#fff", borderRadius: 10, fontSize: 11, fontWeight: 700, padding: "1px 6px" }}>
+              <span style={{ marginLeft: 2, minWidth: 18, height: 18, boxSizing: "border-box", background: color.primary[500], color: color.white, borderRadius: radius.full, fontSize: 11, lineHeight: "18px", fontWeight: 600, padding: "0 5px", textAlign: "center" }}>
                 {activeFilterCount}
               </span>
             )}
           </button>
-          {/* 맞춤 샵 찾기 */}
+          {/* 맞춤 샵 찾기 — 앱 브랜드 칩(연분홍 + primary-300 테두리), 적용 중이면 brand.deep 채움 */}
           <div style={{ marginLeft: "auto" }}>
             {customFind ? (
-              <button onClick={() => setCustomFind(null)} style={pill("active")}>
+              <button onClick={() => setCustomFind(null)} style={{ ...mapChip(), background: color.brand.deep, color: color.white, pointerEvents: "auto" }}>
                 {customFind.chipLabel} ✕
               </button>
             ) : (
-              <button onClick={() => setFindOpen(true)} style={pill("outlinePink")}>
+              <button onClick={() => setFindOpen(true)} style={{ ...mapChip(), background: color.brand.tint, border: `1px solid ${color.primary[300]}`, color: color.primary[500], pointerEvents: "auto" }}>
                 빈자리 찾기
               </button>
             )}
           </div>
         </div>
-        <ActiveFilters filter={filter} onChange={setFilter} />
+        <div style={{ pointerEvents: "auto" }}>
+          <ActiveFilters filter={filter} onChange={setFilter} />
+        </div>
       </header>
 
       {/* 지도 */}
       <div style={{ position: "absolute", inset: 0 }}>
         {error ? (
-          <div style={{ padding: 24, paddingTop: 140, color: "#c00" }}>데이터 로드 실패: {error}</div>
+          <div style={{ padding: 24, paddingTop: 140, color: color.status.error, fontSize: 14 }}>데이터 로드 실패: {error}</div>
         ) : (
           <MapView shops={mapShops} highlightedId={highlightId} center={mapCenter} myPos={myPos} showToday={chip === "today"} onPinClick={onPinClick} onBoundsChanged={onBoundsChanged} />
         )}
       </div>
 
-      {/* 취소석 알림 (지도 우하단) — primary 남발 줄이려고 흰 배경+핑크 테두리+벨 */}
-      <button
-        className="shak-glow"
-        onClick={() => setLeadOpen(true)}
-        style={{ position: "absolute", right: 16, bottom: "calc(30vh + 14px)", zIndex: 18, display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 15px", borderRadius: 24, border: "none", background: "#fff", color: "#ec4899", fontWeight: 700, fontSize: 14, boxShadow: "0 3px 12px rgba(0,0,0,.14)" }}
+      {/* 앱으로 보기 (지도 우하단) — iPhone/iPad는 App Store, 그 외는 앱 웹 버전(app.themuselab.kr) */}
+      <a
+        href={appLink.url}
+        target={appLink.sameTab ? undefined : "_blank"}
+        rel="noopener"
+        onClick={() => usecases.analytics.track({ event: "app_open_click", placement: "map_fab", store: appLink.store })}
+        style={{ position: "absolute", right: 16, bottom: "calc(30vh + 14px)", zIndex: 18, display: "inline-flex", alignItems: "center", gap: 6, height: 40, boxSizing: "border-box", padding: "0 16px 0 13px", borderRadius: radius.full, background: color.primary[500], color: color.white, fontWeight: 600, fontSize: 14, textDecoration: "none", boxShadow: shadow.md }}
       >
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ec4899" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
-          <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-          <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color.white} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <rect width="14" height="20" x="5" y="2" rx="2" ry="2" />
+          <path d="M12 18h.01" />
         </svg>
-        취소석 알림
-      </button>
+        앱으로 보기
+      </a>
 
       {/* 바텀시트 */}
       {root && (
@@ -400,9 +417,9 @@ export default function App() {
           {atFull && (
             <div
               onClick={() => sheetRef.current?.snapTo(2)}
-              style={{ position: "sticky", top: headerH, zIndex: 6, background: "#fff", padding: "8px 0 7px", cursor: "pointer", borderBottom: "1px solid #ececef" }}
+              style={{ position: "sticky", top: headerH, zIndex: 6, background: color.white, padding: "8px 0 7px", cursor: "pointer", borderBottom: `1px solid ${color.line.divider}` }}
             >
-              <div style={{ width: 40, height: 4, borderRadius: 2, background: "#d4d4da", margin: "0 auto" }} />
+              <div style={{ width: 40, height: 4, borderRadius: 2, background: color.line.handle, margin: "0 auto" }} />
             </div>
           )}
           {loading ? (
@@ -410,14 +427,14 @@ export default function App() {
           ) : (
             <>
               {customFind ? (
-                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 18px 10px", fontSize: 14, fontWeight: 600, color: "#333" }}>
-                  <span style={{ width: 8, height: 8, borderRadius: 4, background: "#22c55e" }} />
+                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 20px 10px", fontSize: 14, fontWeight: 600, color: color.text.strong }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 4, background: color.status.open }} />
                   {customFind.bannerLabel}
                 </div>
               ) : (
                 <CollectionChips active={chip} onSelect={(k) => { setChip(k); if (k) usecases.analytics.track({ event: "collection_click", source: k }); }} />
               )}
-              <div style={{ borderTop: "1px solid #f2f2f4" }} />
+              <div style={{ borderTop: `1px solid ${color.line.divider}` }} />
               <ShopListSheet shops={displayed} onShopClick={openDetail} onReset={resetAll} />
             </>
           )}
@@ -446,15 +463,15 @@ export default function App() {
       )}
       {regionOpen && <Suspense fallback={null}><RegionPicker selected={filter.gus ?? []} onApply={selectRegions} onClose={() => setRegionOpen(false)} /></Suspense>}
       {findOpen && <Suspense fallback={null}><CustomFindModal onApply={setCustomFind} onClose={() => setFindOpen(false)} /></Suspense>}
-      {leadOpen && <Suspense fallback={null}><MissedAlertSheet onClose={() => setLeadOpen(false)} /></Suspense>}
     </div>
   );
 }
 
-function pill(kind: "dark" | "outline" | "active" | "outlinePink"): React.CSSProperties {
-  const base: React.CSSProperties = { padding: "9px 15px", borderRadius: 20, fontSize: 14, fontWeight: 700, border: "none", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center" };
-  if (kind === "dark") return { ...base, background: "#ec4899", color: "#fff" };
-  if (kind === "active") return { ...base, background: "#be185d", color: "#fff" };
-  if (kind === "outlinePink") return { ...base, background: "#fff", color: "#ec4899", border: "1.5px solid #ec4899" };
-  return { ...base, background: "#fff", color: "#333", border: "1.5px solid #e5e5e5" };
+// 앱 FilterChip의 ChevronDown(lucide) — 지역 칩 오른쪽
+function Chevron({ color: c }: { color: string }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
 }

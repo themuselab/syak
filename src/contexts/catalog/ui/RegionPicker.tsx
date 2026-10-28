@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { color, radius, button, filterChip, sheetTitle, sectionTitle } from "../../../shared/ui/tokens";
 import { SEOUL_GU, GYEONGGI_SI, INCHEON_GU, BUSAN_GU, DAEGU_GU, GWANGJU_GU, DAEJEON_GU, ULSAN_GU, SEJONG_SI, GYEONGSANG_SI, JEOLLA_SI, GANGWON_SI, CHUNGCHEONG_SI, JEJU_SI } from "../../../shared/domain/category";
 
 type Props = {
@@ -16,7 +17,7 @@ export function RegionPicker({ selected, onApply, onClose }: Props) {
   }
 
   return (
-    <div style={{ position: "absolute", inset: 0, zIndex: 50, background: "rgba(0,0,0,.35)" }} onClick={onClose}>
+    <div style={{ position: "absolute", inset: 0, zIndex: 50, background: color.overlay.dim }} onClick={onClose}>
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
@@ -25,7 +26,7 @@ export function RegionPicker({ selected, onApply, onClose }: Props) {
           left: 0,
           right: 0,
           background: "#fff",
-          borderRadius: "18px 18px 0 0",
+          borderRadius: `${radius.lg}px ${radius.lg}px 0 0`,
           maxHeight: "80vh",
           display: "flex",
           flexDirection: "column",
@@ -35,14 +36,14 @@ export function RegionPicker({ selected, onApply, onClose }: Props) {
         <div style={{ overflowY: "auto", overscrollBehavior: "contain", WebkitOverflowScrolling: "touch", flex: 1 }}>
           <div style={{ padding: "20px 20px 0" }}>
             <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 6 }}>
-              <h2 style={{ fontSize: 17, fontWeight: 800, margin: 0 }}>지역 선택</h2>
+              <h2 style={sheetTitle}>지역 선택</h2>
               {sel.length > 0 && (
-                <button onClick={() => setSel([])} style={{ border: "none", background: "transparent", color: "#999", fontSize: 13, fontWeight: 600 }}>
+                <button onClick={() => setSel([])} style={{ border: "none", background: "transparent", color: color.text.hint, fontSize: 14, fontWeight: 500, cursor: "pointer" }}>
                   전체 해제
                 </button>
               )}
             </div>
-            <p style={{ fontSize: 12, color: "#ec4899", background: "#fdeef6", padding: "8px 11px", borderRadius: 9, margin: "0 0 16px", fontWeight: 600 }}>
+            <p style={{ fontSize: 13, color: color.primary[500], background: color.primary[50], padding: "8px 12px", borderRadius: radius.sm, margin: "0 0 16px", fontWeight: 500 }}>
               여러 지역 동시 선택 가능 — 예: 강남구 + 강동구 같이 보기
             </p>
           </div>
@@ -65,13 +66,13 @@ export function RegionPicker({ selected, onApply, onClose }: Props) {
         </div>
 
         {/* 적용 버튼 (하단 고정 — 스크롤 영역 밖) */}
-        <div style={{ flex: "none", padding: 16, background: "#fff", borderTop: "1px solid #f1f1f1" }}>
+        <div style={{ flex: "none", padding: "12px 20px 16px", background: color.white, borderTop: `1px solid ${color.line.divider}` }}>
           <button
             onClick={() => {
               onApply(sel);
               onClose();
             }}
-            style={{ width: "100%", padding: 14, background: "#ec4899", color: "#fff", border: "none", borderRadius: 13, fontSize: 15, fontWeight: 800 }}
+            style={{ ...button("primary"), width: "100%" }}
           >
             {sel.length === 0 ? "전체 지역 보기" : `${sel.length}개 지역 보기`}
           </button>
@@ -96,8 +97,8 @@ function Section({
 }) {
   return (
     <div style={{ padding: "0 20px 18px" }}>
-      <p style={{ fontSize: 13, fontWeight: 700, color: "#999", margin: "0 0 10px 2px" }}>{label}</p>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+      <p style={{ ...sectionTitle, fontSize: 14, color: color.gray[700], margin: "0 0 10px 2px" }}>{label}</p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
         {items.map((g) => (
           <Chip key={g} active={sel.includes(g)} onClick={() => onToggle(g)}>
             {strip ? g.replace(strip, "") : g}
@@ -110,21 +111,8 @@ function Section({
 
 function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button
-      onClick={onClick}
-      style={{
-        padding: "8px 14px",
-        borderRadius: 20,
-        border: active ? "1.5px solid #ec4899" : "1.5px solid #e5e5e5",
-        background: active ? "#fdeef6" : "#fff",
-        color: active ? "#ec4899" : "#555",
-        fontSize: 13,
-        fontWeight: active ? 700 : 600,
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 5,
-      }}
-    >
+    // 앱 FilterChip(선택 시 연분홍 배경 + 핑크 테두리·글씨)
+    <button onClick={onClick} style={{ ...filterChip(active), height: 36, padding: "0 14px" }}>
       {children}
       {active && <span style={{ fontSize: 12 }}>✕</span>}
     </button>

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ShopPin } from "../domain/shop";
 import type { Bounds } from "../ports/shop-repository";
-import { CATEGORY_COLORS } from "./theme";
+import { color, shadow, FONT_FAMILY } from "../../../shared/ui/tokens";
 import { SEOUL_CENTER, type Coordinate } from "../../../shared/domain/coordinate";
 // 네이버 공식 클러스터링 소스 — ESM으로 정적 import 불가(로드시 naver.maps.Util.ClassExtend 호출).
 // 문자열로 받아 SDK 로드 후 <script>로 평가한다. (loadNaverMaps 참고)
@@ -25,67 +25,43 @@ const ZOOM_CLOSE = 15; // center 지정 시(가까이)
 const ZOOM_CITY = 12; // 기본(서울 시 전체)
 const CLUSTER_MAX_ZOOM = 14; // 이 줌 이상이면 클러스터 해제하고 개별 마커 노출
 
-// ── 핀 비주얼 (카카오판과 동일한 SVG 데이터-URL 생성기) ──────────────────────
-function pinDataUrl(color: string, highlighted = false): string {
-  const size = highlighted ? 26 : 14;
-  const stroke = highlighted ? 3 : 1.4;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><circle cx="${size / 2}" cy="${size / 2}" r="${size / 2 - stroke}" fill="${color}" stroke="white" stroke-width="${stroke}"/></svg>`;
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-}
+// ── 핀 비주얼 — 소비자 앱과 같은 PNG 핀 (app/assets/icons/*, app/src/screens/home/components/HomeMap.web.tsx) ──
+// 앱 규칙: default(분홍 상점) = 일반 샵 / discount(노랑 %) = 이벤트 / reservable(파랑 시계) = 당일 예약 모드
+//          선택 = pin-focused(진한 테두리 큰 핀). 크기도 앱과 동일(핀 24×30, 포커스 48×48, 내 위치 32×32).
+const ASSET = `${import.meta.env.BASE_URL}map/`;
+const PIN = {
+  default: `${ASSET}pin-default.png`,
+  discount: `${ASSET}pin-discount.png`,
+  reservable: `${ASSET}pin-reservable.png`,
+  focused: `${ASSET}pin-focused.png`,
+  myLocation: `${ASSET}marker-my-location.png`,
+};
+const PIN_W = 24;
+const PIN_H = 30;
+const PARTNER_W = 30; // 파트너는 클러스터에서 빠지고 항상 보이므로 한 단계 크게(앱 핀과 같은 모양)
+const PARTNER_H = 37.5;
+const FOCUSED = 48;
+const FOCUSED_TIP_Y = 45; // pin-focused.png(168px)의 핀 끝 = y 158 → 48px 기준 45 (네이티브 마커 기본 앵커 = 하단 끝)
 
-// 할인/이벤트 가게 — 핑크 물방울 핀(일반 동그라미 핀과 확연히 구분, 네이버 광고핀처럼)
-function eventPinDataUrl(): string {
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="31" viewBox="0 0 24 31">` +
-    `<path d="M12 0C5.4 0 0 5.4 0 12c0 8.4 12 19 12 19s12-10.6 12-19C24 5.4 18.6 0 12 0z" fill="#ec4899" stroke="#fff" stroke-width="2"/>` +
-    `<text x="12" y="16" font-size="11" font-weight="bold" fill="#fff" text-anchor="middle" font-family="sans-serif">%</text>` +
-    `</svg>`;
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-}
-
-// 오늘 예약 가능 — 초록 물방울 핀 (당일 예약 가능 = 당장 갈 수 있음)
-function todayPinDataUrl(): string {
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="31" viewBox="0 0 24 31">` +
-    `<path d="M12 0C5.4 0 0 5.4 0 12c0 8.4 12 19 12 19s12-10.6 12-19C24 5.4 18.6 0 12 0z" fill="#16a34a" stroke="#fff" stroke-width="2"/>` +
-    `<path d="M7 12l3.2 3.2L17 8.5" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>` +
-    `</svg>`;
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-}
-
-// 샥 파트너(파일럿) — 골드 별 핀(가장 크고 눈에 띔, 클러스터에서 제외돼 항상 보임)
-function partnerPinDataUrl(): string {
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="30" height="40" viewBox="0 0 30 40">` +
-    `<path d="M15 0C7 0 0 6.6 0 15c0 10.5 15 25 15 25s15-14.5 15-25C30 6.6 23 0 15 0z" fill="#f59e0b" stroke="#fff" stroke-width="2.5"/>` +
-    `<path d="M15 6l2.6 5.3 5.9.9-4.2 4.1 1 5.8L15 23.4 9.7 26.1l1-5.8-4.2-4.1 5.9-.9z" fill="#fff"/>` +
-    `</svg>`;
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-}
-
-const MY_DOT =
-  "data:image/svg+xml;utf8," +
-  encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22"><circle cx="11" cy="11" r="6" fill="#3b82f6" stroke="white" stroke-width="3"/><circle cx="11" cy="11" r="10" fill="#3b82f6" opacity="0.18"/></svg>`,
-  );
-
-// 파트너 이름 라벨 HTML — 0x0 래퍼 안에 절대배치로 핀 위에 띄운다(가변 폭이라 anchor는 0,0 고정).
+// 파트너 이름 라벨 HTML — 앱 "샥 파트너" 브랜드 칩 모양(연분홍 배경 + primary-300 테두리 + primary-500 글씨).
+// 0x0 래퍼 안에 절대배치로 핀 위에 띄운다(가변 폭이라 anchor는 0,0 고정).
 function partnerLabelHtml(name: string): string {
   const style =
-    "position:absolute;left:0;bottom:46px;transform:translateX(-50%);white-space:nowrap;" +
-    "background:#fff;border:1.5px solid #f59e0b;color:#b45309;font-size:11px;font-weight:800;" +
-    "padding:3px 8px;border-radius:11px;box-shadow:0 2px 7px rgba(0,0,0,.22);cursor:pointer;";
+    `position:absolute;left:0;bottom:${PARTNER_H + 5}px;transform:translateX(-50%);white-space:nowrap;` +
+    `background:${color.brand.tint};border:1px solid ${color.primary[300]};color:${color.primary[500]};` +
+    `font-size:12px;font-weight:600;line-height:16px;padding:3px 9px;border-radius:999px;` +
+    `box-shadow:${shadow.sm};cursor:pointer;font-family:${FONT_FAMILY.replace(/"/g, "'")};`;
   const esc = name.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return `<div style="position:relative;width:0;height:0;"><div style="${style}">${esc}</div></div>`;
 }
 
 // 이미지 아이콘 옵션 — anchor는 이미지 하단 중앙(카카오 MarkerImage 기본과 동일).
-function imgIcon(naver: NaverAny, url: string, w: number, h: number): NaverAny {
+function imgIcon(naver: NaverAny, url: string, w: number, h: number, anchorY: number = h): NaverAny {
   return {
     url,
     size: new naver.maps.Size(w, h),
     scaledSize: new naver.maps.Size(w, h),
-    anchor: new naver.maps.Point(w / 2, h),
+    anchor: new naver.maps.Point(w / 2, anchorY),
   };
 }
 
@@ -200,13 +176,12 @@ export function MapViewNaver({ shops, highlightedId, center, myPos, showToday = 
 
     // 공유 아이콘 옵션 미리 생성
     const icons = iconsRef.current;
-    for (const [cat, color] of Object.entries(CATEGORY_COLORS)) {
-      icons[cat] = imgIcon(naver, pinDataUrl(color), 14, 14);
-    }
-    icons["__event__"] = imgIcon(naver, eventPinDataUrl(), 24, 31);
-    icons["__partner__"] = imgIcon(naver, partnerPinDataUrl(), 30, 40);
-    icons["__today__"] = imgIcon(naver, todayPinDataUrl(), 24, 31);
-    icons["__mydot__"] = imgIcon(naver, MY_DOT, 22, 22);
+    icons["__default__"] = imgIcon(naver, PIN.default, PIN_W, PIN_H);
+    icons["__event__"] = imgIcon(naver, PIN.discount, PIN_W, PIN_H);
+    icons["__partner__"] = imgIcon(naver, PIN.default, PARTNER_W, PARTNER_H);
+    icons["__today__"] = imgIcon(naver, PIN.reservable, PIN_W, PIN_H);
+    icons["__focused__"] = imgIcon(naver, PIN.focused, FOCUSED, FOCUSED, FOCUSED_TIP_Y);
+    icons["__mydot__"] = imgIcon(naver, PIN.myLocation, 32, 32, 16); // 점형 = 중앙 앵커(앱과 동일)
 
     const startCenter = center ?? SEOUL_CENTER;
     const map = new naver.maps.Map(el, {
@@ -215,10 +190,11 @@ export function MapViewNaver({ shops, highlightedId, center, myPos, showToday = 
     });
     mapRef.current = map;
 
-    // 클러스터 아이콘 — 카카오판과 동일한 핑크 그라데이션 4단계
+    // 클러스터 아이콘 — 앱 primary 스케일 4단계(개수 많을수록 진하고 크게). 흰 테두리 + 흰 숫자(Pretendard SemiBold).
     const clusterHtml = (size: number, bg: string) =>
-      `<div style="width:${size}px;height:${size}px;background:${bg};border-radius:${size / 2}px;` +
-      `color:#fff;font-size:13px;font-weight:700;border:2px solid #fff;box-shadow:0 2px 8px rgba(157,23,107,.35);` +
+      `<div style="width:${size}px;height:${size}px;background:${bg};border-radius:${size / 2}px;box-sizing:border-box;` +
+      `color:#fff;font-size:${size >= 56 ? 15 : 13}px;font-weight:600;letter-spacing:-0.2px;border:2px solid #fff;` +
+      `box-shadow:${shadow.md};font-family:${FONT_FAMILY.replace(/"/g, "'")};` +
       `display:flex;align-items:center;justify-content:center;"></div>`;
     const clusterIcon = (size: number, bg: string) => ({
       content: clusterHtml(size, bg),
@@ -233,10 +209,10 @@ export function MapViewNaver({ shops, highlightedId, center, myPos, showToday = 
       disableClickZoom: false,
       gridSize: 80,
       icons: [
-        clusterIcon(38, "rgba(244,114,182,0.92)"),
-        clusterIcon(46, "rgba(236,72,153,0.93)"),
-        clusterIcon(56, "rgba(219,39,119,0.95)"),
-        clusterIcon(66, "rgba(157,23,107,0.95)"),
+        clusterIcon(36, color.primary[400]),
+        clusterIcon(44, color.primary[500]),
+        clusterIcon(54, color.primary[600]),
+        clusterIcon(64, color.primary[700]),
       ],
       indexGenerator: [10, 100, 500], // 카카오판 calculator와 동일 구간
       stylingFunction: (clusterMarker: NaverAny, count: number) => {
@@ -295,7 +271,7 @@ export function MapViewNaver({ shops, highlightedId, center, myPos, showToday = 
 
     const regIcon = (s: ShopPin) => {
       const green = showToday && s.todayOpen; // 토글 ON일 때만 초록
-      return green ? icons["__today__"] : s.hasEvent ? icons["__event__"] : icons[s.category] || icons["네일"];
+      return green ? icons["__today__"] : s.hasEvent ? icons["__event__"] : icons["__default__"];
     };
     const regZ = (s: ShopPin) => (showToday && s.todayOpen ? 7 : s.hasEvent ? 6 : 3);
 
@@ -390,7 +366,7 @@ export function MapViewNaver({ shops, highlightedId, center, myPos, showToday = 
       const mk = byId[s.id];
       if (!mk) continue;
       const green = showToday && s.todayOpen;
-      mk.setIcon(green ? icons["__today__"] : s.hasEvent ? icons["__event__"] : icons[s.category] || icons["네일"]);
+      mk.setIcon(green ? icons["__today__"] : s.hasEvent ? icons["__event__"] : icons["__default__"]);
       mk.setZIndex(green ? 7 : s.hasEvent ? 6 : 3);
     }
   }, [showToday, shops]);
@@ -408,16 +384,13 @@ export function MapViewNaver({ shops, highlightedId, center, myPos, showToday = 
         (prev?.isPartner && icons["__partner__"]) ||
         (showToday && prev?.todayOpen && icons["__today__"]) ||
         (prev?.hasEvent && icons["__event__"]) ||
-        (prev && icons[prev.category]) ||
-        icons["네일"];
+        icons["__default__"];
       mk(prevHl.current).setIcon(restore);
       // 강조 해제 시 zIndex도 원복 (카카오판의 잠재 버그 개선)
       mk(prevHl.current).setZIndex(prev?.isPartner ? 9 : showToday && prev?.todayOpen ? 7 : prev?.hasEvent ? 6 : 3);
     }
     if (highlightedId && mk(highlightedId)) {
-      const s = shops.find((x) => x.id === highlightedId);
-      const color = (s && CATEGORY_COLORS[s.category]) || "#ec4899";
-      mk(highlightedId).setIcon(imgIcon(naver, pinDataUrl(color, true), 26, 26));
+      mk(highlightedId).setIcon(icons["__focused__"]); // 앱과 동일: 선택 핀 = pin-focused
       mk(highlightedId).setZIndex(10);
     }
     prevHl.current = highlightedId;
@@ -465,14 +438,16 @@ export function MapViewNaver({ shops, highlightedId, center, myPos, showToday = 
         <button
           onClick={recenter}
           aria-label="현재 위치로"
-          style={{ position: "absolute", left: 16, bottom: "calc(30vh + 14px)", zIndex: 18, width: 44, height: 44, borderRadius: 22, border: "none", background: "#fff", boxShadow: "0 2px 10px rgba(0,0,0,.18)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+          style={{ position: "absolute", left: 16, bottom: "calc(30vh + 14px)", zIndex: 18, width: 40, height: 40, borderRadius: 20, border: `1px solid ${color.gray[300]}`, background: color.white, boxShadow: shadow.xs, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0 }}
         >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ec4899" strokeWidth={2} strokeLinecap="round">
-            <circle cx="12" cy="12" r="3.5" />
-            <line x1="12" y1="2" x2="12" y2="5" />
-            <line x1="12" y1="19" x2="12" y2="22" />
-            <line x1="2" y1="12" x2="5" y2="12" />
-            <line x1="19" y1="12" x2="22" y2="12" />
+          {/* 앱 CurrentLocationButton과 동일: 40×40 흰 원 + gray-300 테두리 + LocateFixed(gray-700) */}
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={color.gray[700]} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <line x1="2" x2="5" y1="12" y2="12" />
+            <line x1="19" x2="22" y1="12" y2="12" />
+            <line x1="12" x2="12" y1="2" y2="5" />
+            <line x1="12" x2="12" y1="19" y2="22" />
+            <circle cx="12" cy="12" r="7" />
+            <circle cx="12" cy="12" r="3" />
           </svg>
         </button>
       )}
@@ -489,7 +464,8 @@ function Centered({ children }: { children: React.ReactNode }) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        color: "#888",
+        color: color.text.hint,
+        background: color.surface.map,
         fontSize: 14,
       }}
     >

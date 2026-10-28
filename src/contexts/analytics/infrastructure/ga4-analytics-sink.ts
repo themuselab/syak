@@ -37,6 +37,8 @@ export class GA4AnalyticsSink implements AnalyticsSink {
       if (event.ms != null) params.ms = event.ms;
       if (event.slotDate) params.slot_date = event.slotDate;
       if (event.slotTime) params.slot_time = event.slotTime;
+      if (event.placement) params.placement = event.placement;
+      if (event.store) params.store = event.store;
 
       gtag("event", name, params);
     } catch {

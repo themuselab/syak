@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useShopDetail } from "./hooks/useShopDetail";
 import { thumbW, FALLBACK_IMAGE, onImgError } from "../../../shared/ui/image";
 import { usecases } from "../../../app/composition-root";
+import { color, radius, shadow, button } from "../../../shared/ui/tokens";
 import type { ReservationRoute } from "../domain/shop";
 
 // 대표(최저) 실서비스가 — add-on/잡메뉴(추가·기장·옵션 등) 제외하고 가장 싼 메뉴
@@ -90,7 +91,8 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
         position: "absolute",
         inset: 0,
         zIndex: 40,
-        background: "#fff",
+        background: color.white,
+        color: color.text.strong,
         overflowY: "auto",
         WebkitOverflowScrolling: "touch",
       }}
@@ -102,20 +104,27 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
           top: 12,
           left: 12,
           zIndex: 41,
-          width: 36,
-          height: 36,
-          borderRadius: 18,
-          border: "none",
-          background: "#fff",
-          boxShadow: "0 2px 8px rgba(0,0,0,.2)",
-          fontSize: 18,
+          width: 40,
+          height: 40,
+          borderRadius: 20,
+          border: `1px solid ${color.gray[300]}`,
+          background: color.white,
+          boxShadow: shadow.xs,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 0,
+          cursor: "pointer",
         }}
+        aria-label="뒤로"
       >
-        ←
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={color.gray[800]} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <path d="m15 18-6-6 6-6" />
+        </svg>
       </button>
 
-      {loading && <div style={{ padding: 40, textAlign: "center", color: "#999" }}>불러오는 중…</div>}
-      {!loading && !detail && <div style={{ padding: 40, textAlign: "center", color: "#999" }}>정보 없음</div>}
+      {loading && <div style={{ padding: 40, textAlign: "center", color: color.text.hint, fontSize: 14 }}>불러오는 중…</div>}
+      {!loading && !detail && <div style={{ padding: 40, textAlign: "center", color: color.text.hint, fontSize: 14 }}>정보 없음</div>}
 
       {detail && (
         <>
@@ -134,50 +143,50 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
             onSwipe={onGallerySwipe}
           />
 
-          <div style={{ padding: "14px 16px 100px" }}>
-            <h2 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>{detail.name}</h2>
-            <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+          <div style={{ padding: "16px 20px 120px" }}>
+            <h2 style={{ fontSize: 24, lineHeight: "32px", letterSpacing: -0.48, fontWeight: 600, margin: 0, color: color.text.strong }}>{detail.name}</h2>
+            <div style={{ display: "flex", gap: 4, marginTop: 8, flexWrap: "wrap" }}>
               {detail.isPartner && <DBadge tone="partner">샥 파트너</DBadge>}
               {detail.hasEvent && <DBadge tone="event">{detail.eventPrice ?? "할인"}</DBadge>}
               <DBadge tone="price">{detail.priceTier}</DBadge>
             </div>
             {/* 평점·지역·시술 한 줄로 합침 (정보 정리) */}
-            <div style={{ fontSize: 13, color: "#888", marginTop: 10 }}>
+            <div style={{ fontSize: 14, color: color.text.subtle, marginTop: 8 }}>
               리뷰 {detail.reviewTotal.toLocaleString()} · {detail.gu}
               {detail.services.length > 0 && ` · ${detail.services.slice(0, 3).join("·")}`}
             </div>
 
             {/* 파일럿(파트너) 전용 배너 — 사장님 확인된 할인 + 빈 시간 (수동 큐레이션) */}
             {detail.pilotCoupon && (
-              <div style={{ background: "linear-gradient(135deg,#fff8e8,#ffefcb)", border: "1.5px solid #f5cf7a", borderRadius: 13, padding: "12px 13px", marginTop: 12 }}>
-                <span style={{ display: "inline-block", background: "#f59e0b", color: "#fff", fontSize: 11, fontWeight: 800, padding: "3px 9px", borderRadius: 8, marginBottom: 7 }}>
+              <div style={{ background: color.brand.tint, border: `1px solid ${color.primary[300]}`, borderRadius: radius.md, padding: "12px 14px", marginTop: 12 }}>
+                <span style={{ display: "inline-block", background: color.primary[500], color: color.white, fontSize: 12, fontWeight: 600, padding: "2px 8px", borderRadius: 4, marginBottom: 8 }}>
                   샥 파트너 혜택
                 </span>
-                <div style={{ fontSize: 14, lineHeight: 1.45, color: "#92600c", fontWeight: 700 }}>{detail.pilotCoupon}</div>
+                <div style={{ fontSize: 14, lineHeight: "20px", color: color.primary[700], fontWeight: 600 }}>{detail.pilotCoupon}</div>
                 {detail.pilotHours && (
-                  <div style={{ fontSize: 12, color: "#b07d1e", marginTop: 5, fontWeight: 600 }}>빈자리: {detail.pilotHours}</div>
+                  <div style={{ fontSize: 12, color: color.primary[600], marginTop: 4, fontWeight: 500 }}>빈자리: {detail.pilotHours}</div>
                 )}
               </div>
             )}
 
             {/* 할인/이벤트 박스 (스크랩) — 파일럿 배너 없을 때만 */}
             {!detail.pilotCoupon && detail.hasEvent && detail.eventDesc && (
-              <div style={{ background: "linear-gradient(135deg,#fff0f7,#ffe4f0)", border: "1.5px solid #f8c6dd", borderRadius: 13, padding: "12px 13px", marginTop: 12 }}>
-                <span style={{ display: "inline-block", background: "#ec4899", color: "#fff", fontSize: 11, fontWeight: 800, padding: "3px 9px", borderRadius: 8, marginBottom: 7 }}>
+              <div style={{ background: color.primary[50], borderRadius: radius.md, padding: "12px 14px", marginTop: 12 }}>
+                <span style={{ display: "inline-block", background: color.primary[500], color: color.white, fontSize: 12, fontWeight: 600, padding: "2px 8px", borderRadius: 4, marginBottom: 8 }}>
                   {detail.eventPrice ?? "할인"}
                 </span>
-                <div style={{ fontSize: 13, lineHeight: 1.5, color: "#9b2a5e", fontWeight: 600, whiteSpace: "pre-line" }}>{detail.eventDesc}</div>
+                <div style={{ fontSize: 14, lineHeight: "20px", color: color.primary[700], fontWeight: 500, whiteSpace: "pre-line" }}>{detail.eventDesc}</div>
               </div>
             )}
 
             {/* ⚡ 오늘 바로 예약 — 당일예약이 핵심이라 가장 크게(솔리드 핑크) */}
             {todaySlots && todaySlots.length > 0 && (
-              <div style={{ marginTop: 16, padding: 15, borderRadius: 15, background: "linear-gradient(135deg,#ec4899,#db2777)", color: "#fff" }}>
+              <div style={{ marginTop: 16, padding: 16, borderRadius: radius.md, background: color.primary[500], color: color.white }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <span style={{ fontSize: 16, fontWeight: 800 }}>오늘 바로 예약</span>
-                  <span style={{ fontSize: 11, opacity: 0.85, fontWeight: 600 }}>지금 남은 시간</span>
+                  <span style={{ fontSize: 16, fontWeight: 600 }}>오늘 바로 예약</span>
+                  <span style={{ fontSize: 12, opacity: 0.85, fontWeight: 500 }}>지금 남은 시간</span>
                 </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 12 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
                   {todaySlots.slice(0, 18).map((t) => (
                     <a
                       key={t}
@@ -185,13 +194,13 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
                       target="_blank"
                       rel="noreferrer"
                       onClick={() => onReserveClick(detail.id, { type: "naver", label: "네이버로 예약", value: "" }, { slot: { date: todayYmd(), time: t }, district: detail.gu, category: detail.category })}
-                      style={{ padding: "8px 14px", borderRadius: 18, background: "#fff", color: "#db2777", fontSize: 14, fontWeight: 800, textDecoration: "none" }}
+                      style={{ height: 36, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: radius.full, background: color.white, color: color.primary[500], fontSize: 14, fontWeight: 600, textDecoration: "none" }}
                     >
                       {t}
                     </a>
                   ))}
                 </div>
-                <div style={{ fontSize: 11, opacity: 0.8, marginTop: 11 }}>시간을 누르면 네이버 예약으로 이동해요.</div>
+                <div style={{ fontSize: 12, opacity: 0.85, marginTop: 12 }}>시간을 누르면 네이버 예약으로 이동해요.</div>
               </div>
             )}
 
@@ -208,9 +217,9 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
               return (
                 <Section title="메뉴 · 가격">
                   {rep && (
-                    <div style={{ background: "#fdeef6", border: "1px solid #f8c6dd", borderRadius: 10, padding: "9px 12px", marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{ fontSize: 12.5, fontWeight: 700, color: "#9b2a5e" }}>최저 · {rep.name}</span>
-                      <span style={{ fontSize: 16, fontWeight: 800, color: "#ec4899" }}>{rep.price.toLocaleString()}원~</span>
+                    <div style={{ background: color.primary[50], borderRadius: radius.sm, padding: "10px 12px", marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: 13, fontWeight: 500, color: color.primary[700] }}>최저 · {rep.name}</span>
+                      <span style={{ fontSize: 16, fontWeight: 600, color: color.primary[500] }}>{rep.price.toLocaleString()}원~</span>
                     </div>
                   )}
                   {detail.menus.slice(0, showAllMenus ? 30 : 5).map((m, i) => {
@@ -218,14 +227,14 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
                     return (
                       <div
                         key={i}
-                        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "9px 0", fontSize: 13, borderTop: i === 0 ? "none" : "1px solid #f1f1f3" }}
+                        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "10px 0", fontSize: 14, color: color.text.base, borderTop: i === 0 ? "none" : `1px solid ${color.line.divider}` }}
                       >
                         <span>
-                          {isRep && <span style={{ color: "#ec4899", fontWeight: 800, marginRight: 4 }}>최저가</span>}
-                          {m.recommend && <span style={{ color: "#ec4899", fontWeight: 700, marginRight: 4 }}>추천</span>}
+                          {isRep && <span style={{ color: color.primary[500], fontWeight: 600, marginRight: 4 }}>최저가</span>}
+                          {m.recommend && <span style={{ color: color.primary[500], fontWeight: 500, marginRight: 4 }}>추천</span>}
                           {m.name}
                         </span>
-                        <span style={{ fontWeight: isRep ? 800 : 600, color: isRep ? "#ec4899" : undefined }}>
+                        <span style={{ fontWeight: isRep ? 600 : 500, color: isRep ? color.primary[500] : color.text.strong, flexShrink: 0 }}>
                           {m.price ? `${m.price.toLocaleString()}원` : "—"}
                         </span>
                       </div>
@@ -251,7 +260,7 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
                 <Info
                   label="인스타"
                   value={
-                    <a href={detail.instagram} target="_blank" rel="noreferrer" style={{ color: "#ec4899" }}>
+                    <a href={detail.instagram} target="_blank" rel="noreferrer" style={{ color: color.primary[500] }}>
                       {detail.instagram.replace("https://www.instagram.com/", "@").split("?")[0]}
                     </a>
                   }
@@ -263,18 +272,18 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
             {detail.reviews.length > 0 && (
               <Section title={`방문자 리뷰 ${detail.reviewTotal.toLocaleString()}`}>
                 {detail.reviews.slice(0, showAllReviews ? 30 : 2).map((r, i) => (
-                  <div key={i} style={{ padding: "8px 0", borderTop: i ? "1px solid #f4f4f6" : "none" }}>
-                    <div style={{ fontSize: 13, lineHeight: 1.45 }}>{r.body}</div>
+                  <div key={i} style={{ padding: "10px 12px", marginTop: i ? 8 : 0, borderRadius: radius.sm, background: color.surface.muted }}>
+                    <div style={{ fontSize: 14, lineHeight: "20px", color: color.text.muted }}>{r.body}</div>
                     {r.keywords.length > 0 && (
                       <div style={{ marginTop: 4, display: "flex", flexWrap: "wrap", gap: 4 }}>
                         {r.keywords.slice(0, 4).map((k) => (
-                          <span key={k} style={{ fontSize: 10, color: "#888", background: "#f5f5f7", borderRadius: 4, padding: "1px 5px" }}>
+                          <span key={k} style={{ fontSize: 11, color: color.text.subtle, background: color.white, borderRadius: 4, padding: "1px 6px" }}>
                             {k}
                           </span>
                         ))}
                       </div>
                     )}
-                    {r.visited && <div style={{ fontSize: 11, color: "#bbb", marginTop: 3 }}>{r.visited}</div>}
+                    {r.visited && <div style={{ fontSize: 11, color: color.text.faint, marginTop: 4 }}>{r.visited}</div>}
                   </div>
                 ))}
                 {!showAllReviews && detail.reviews.length > 2 && (
@@ -300,7 +309,7 @@ function Gallery({ images, onSwipe }: { images: string[]; onSwipe?: () => void }
       <img
         src={FALLBACK_IMAGE}
         alt=""
-        style={{ width: "100%", height: 300, objectFit: "cover", display: "block", background: "#fdeef2" }}
+        style={{ width: "100%", height: 300, objectFit: "cover", display: "block", background: color.primary[50] }}
       />
     );
   const shown = images.slice(0, 20);
@@ -334,14 +343,14 @@ function Gallery({ images, onSwipe }: { images: string[]; onSwipe?: () => void }
           ))}
         </div>
         {shown.length > 1 && (
-          <div style={{ position: "absolute", right: 12, bottom: 12, background: "rgba(0,0,0,.55)", color: "#fff", fontSize: 12, fontWeight: 600, borderRadius: 12, padding: "3px 11px" }}>
+          <div style={{ position: "absolute", right: 12, bottom: 12, background: "rgba(0,0,0,.55)", color: color.white, fontSize: 12, fontWeight: 500, borderRadius: radius.full, padding: "3px 10px" }}>
             {idx + 1} / {shown.length}
           </div>
         )}
       </div>
       {/* 썸네일 스트립 — 작업 사진 한눈에 훑기, 탭하면 크게 */}
       {shown.length > 1 && (
-        <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "8px 12px 4px", scrollbarWidth: "none" }}>
+        <div style={{ display: "flex", gap: 4, overflowX: "auto", padding: "8px 20px 4px", scrollbarWidth: "none" }}>
           {shown.map((src, i) => (
             <img
               key={i}
@@ -354,10 +363,10 @@ function Gallery({ images, onSwipe }: { images: string[]; onSwipe?: () => void }
                 width: 58,
                 height: 58,
                 objectFit: "cover",
-                borderRadius: 9,
+                borderRadius: 6,
                 flexShrink: 0,
                 cursor: "pointer",
-                border: i === idx ? "2px solid #ec4899" : "2px solid transparent",
+                border: i === idx ? `2px solid ${color.primary[500]}` : "2px solid transparent",
                 opacity: i === idx ? 1 : 0.65,
               }}
             />
@@ -369,27 +378,27 @@ function Gallery({ images, onSwipe }: { images: string[]; onSwipe?: () => void }
 }
 
 const moreBtnStyle: React.CSSProperties = {
-  width: "100%", marginTop: 8, padding: "9px", border: "1px solid #eee", borderRadius: 9,
-  background: "#fff", color: "#999", fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+  width: "100%", marginTop: 10, height: 40, border: `1px solid ${color.line.base}`, borderRadius: radius.sm,
+  background: color.white, color: color.text.muted, fontSize: 14, fontWeight: 500, cursor: "pointer", fontFamily: "inherit",
 };
 
+// 홈 시안 태그 톤: 이벤트 = 연분홍 + 핑크, 가격대 = 회색, 파트너 = 앱 브랜드 칩(연분홍 + primary-300 테두리)
 const DTONES = {
-  partner: { bg: "#f59e0b", color: "#fff" },
-  event: { bg: "#ec4899", color: "#fff" },
-  price: { bg: "#f0f0f3", color: "#6b6b72" },
-  first: { bg: "#fff1e3", color: "#e3820f" },
+  partner: { bg: color.brand.tint, color: color.primary[500], border: color.primary[300] },
+  event: { bg: color.primary[50], color: color.primary[500], border: "transparent" },
+  price: { bg: color.gray[100], color: color.gray[700], border: "transparent" },
 } as const;
 function DBadge({ tone, children }: { tone: keyof typeof DTONES; children: React.ReactNode }) {
   const c = DTONES[tone];
-  return <span style={{ fontSize: 13, fontWeight: 600, color: c.color, background: c.bg, borderRadius: 7, padding: "4px 10px" }}>{children}</span>;
+  return <span style={{ fontSize: 12, lineHeight: "16px", fontWeight: 500, color: c.color, background: c.bg, border: `1px solid ${c.border}`, borderRadius: 4, padding: "2px 7px" }}>{children}</span>;
 }
 
 function SlotsCard({ slots, naverUrl, onPick }: { slots: string[]; naverUrl?: string; onPick: (time: string) => void }) {
   return (
-    <div style={{ marginTop: 12, padding: "11px 12px", borderRadius: 12, background: "#fafafa", border: "1px solid #eee" }}>
+    <div style={{ marginTop: 12, padding: "12px 14px", borderRadius: radius.md, background: color.gray[50], border: `1px solid ${color.line.base}` }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: "#666" }}>내일도 예약 가능</span>
-        <span style={{ fontSize: 10.5, color: "#aaa", fontWeight: 600 }}>매시간 갱신</span>
+        <span style={{ fontSize: 14, fontWeight: 600, color: color.text.strong }}>내일도 예약 가능</span>
+        <span style={{ fontSize: 11, color: color.text.faint, fontWeight: 500 }}>매시간 갱신</span>
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 9 }}>
         {slots.slice(0, 12).map((t) => (
@@ -399,12 +408,12 @@ function SlotsCard({ slots, naverUrl, onPick }: { slots: string[]; naverUrl?: st
             target="_blank"
             rel="noreferrer"
             onClick={() => onPick(t)}
-            style={{ padding: "5px 10px", borderRadius: 15, background: "#fff", color: "#999", border: "1px solid #ddd", fontSize: 12, fontWeight: 600, textDecoration: "none" }}
+            style={{ height: 30, display: "inline-flex", alignItems: "center", padding: "0 12px", borderRadius: radius.full, background: color.white, color: color.gray[700], border: `1px solid ${color.gray[300]}`, fontSize: 13, fontWeight: 500, textDecoration: "none" }}
           >
             {t}
           </a>
         ))}
-        {slots.length > 12 && <span style={{ fontSize: 11, color: "#bbb", padding: "5px 2px" }}>+{slots.length - 12}</span>}
+        {slots.length > 12 && <span style={{ fontSize: 12, color: color.text.faint, padding: "6px 2px" }}>+{slots.length - 12}</span>}
       </div>
     </div>
   );
@@ -412,8 +421,8 @@ function SlotsCard({ slots, naverUrl, onPick }: { slots: string[]; naverUrl?: st
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div style={{ marginTop: 20 }}>
-      <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 8px" }}>{title}</h3>
+    <div style={{ marginTop: 28 }}>
+      <h3 style={{ fontSize: 18, lineHeight: "24px", fontWeight: 600, margin: "0 0 12px", color: color.text.strong }}>{title}</h3>
       {children}
     </div>
   );
@@ -422,9 +431,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Info({ label, value }: { label: string; value: React.ReactNode }) {
   if (!value) return null;
   return (
-    <div style={{ display: "flex", gap: 8, padding: "3px 0", fontSize: 13 }}>
-      <span style={{ color: "#999", flexShrink: 0, width: 60 }}>{label}</span>
-      <span style={{ color: "#333" }}>{value}</span>
+    <div style={{ display: "flex", gap: 8, padding: "4px 0", fontSize: 14, lineHeight: "20px" }}>
+      <span style={{ color: color.text.hint, flexShrink: 0, width: 60 }}>{label}</span>
+      <span style={{ color: color.text.base }}>{value}</span>
     </div>
   );
 }
@@ -436,7 +445,7 @@ function ReserveBar({ routes: allRoutes, onReserve }: { routes: ReservationRoute
   const routes = allRoutes.filter((r) => r.type !== "talktalk");
   if (!routes.length)
     return (
-      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, padding: 16, background: "#fff", borderTop: "1px solid #eee", textAlign: "center", color: "#bbb", fontSize: 13, zIndex: 41 }}>
+      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, padding: 16, background: color.white, borderTop: `1px solid ${color.line.divider}`, textAlign: "center", color: color.text.faint, fontSize: 14, zIndex: 41 }}>
         예약 정보 없음
       </div>
     );
@@ -445,9 +454,9 @@ function ReserveBar({ routes: allRoutes, onReserve }: { routes: ReservationRoute
   const others = sorted.slice(1, 4);
   const href = (r: ReservationRoute) => (r.type === "phone" ? `tel:${r.value}` : r.value);
   return (
-    <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, padding: "12px 16px 16px", background: "#fff", borderTop: "1px solid #eee", zIndex: 41 }}>
+    <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, padding: "12px 20px 16px", background: color.white, borderTop: `1px solid ${color.line.divider}`, zIndex: 41 }}>
       {others.length > 0 && (
-        <div style={{ display: "flex", gap: 8, marginBottom: 10, justifyContent: "center" }}>
+        <div style={{ display: "flex", gap: 6, marginBottom: 10, justifyContent: "center" }}>
           {others.map((r) => (
             <a
               key={r.type}
@@ -455,7 +464,7 @@ function ReserveBar({ routes: allRoutes, onReserve }: { routes: ReservationRoute
               target={r.type === "phone" ? undefined : "_blank"}
               rel="noreferrer"
               onClick={() => onReserve(r)}
-              style={{ padding: "7px 14px", borderRadius: 18, border: "1.5px solid #e5e5e5", color: "#555", fontSize: 13, fontWeight: 600, textDecoration: "none" }}
+              style={{ height: 33, display: "inline-flex", alignItems: "center", padding: "0 12px", borderRadius: radius.full, border: `1px solid ${color.gray[300]}`, color: color.gray[800], fontSize: 14, fontWeight: 500, textDecoration: "none" }}
             >
               {r.label}
             </a>
@@ -467,7 +476,7 @@ function ReserveBar({ routes: allRoutes, onReserve }: { routes: ReservationRoute
         target={primary.type === "phone" ? undefined : "_blank"}
         rel="noreferrer"
         onClick={() => onReserve(primary)}
-        style={{ display: "block", textAlign: "center", padding: 16, borderRadius: 14, background: "#ec4899", color: "#fff", fontWeight: 800, fontSize: 16, textDecoration: "none" }}
+        style={{ ...button("primary"), height: 52 }}
       >
         {primary.label}
       </a>
