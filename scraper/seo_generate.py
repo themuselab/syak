@@ -90,9 +90,12 @@ def short_road(road):
     return " ".join(out[:3]) or None
 
 
-def to_shop(s):
-    # api/seo.js 가 쓰는 짧은 키로 압축. (name, tier, min, rv, today, ev, fv, road, m)
-    out = {"name": s["name"], "tier": s.get("price_tier") or "",
+PHOTO_TOP = 8  # 사진 캐러셀에 쓸 앞쪽 샵 수(사진 URL이 길어 전부 넣으면 regions.json이 2배로 커짐)
+
+
+def to_shop(s, with_photo=False):
+    # api/seo.js 가 쓰는 짧은 키로 압축. (id, name, tier, min, rv, today, ev, fv, road, m, ph)
+    out = {"id": s.get("id"), "name": s["name"], "tier": s.get("price_tier") or "",
            "min": s.get("min_price"), "rv": s.get("review_count"),
            "today": bool(s.get("today_open")),
            "ev": bool(s.get("has_event")), "fv": bool(s.get("first_visit_deal"))}
@@ -102,7 +105,13 @@ def to_shop(s):
     menus = s.get("menus") or []
     if menus:  # 대표 실시술(최저가) 1개
         out["m"] = {"n": menus[0]["n"], "p": menus[0]["p"]}
+    if with_photo and s.get("photo"):
+        out["ph"] = s["photo"]
     return out
+
+
+def to_shops(shops):
+    return [to_shop(s, i < PHOTO_TOP) for i, s in enumerate(shops)]
 
 
 def pop_menus(shops):
@@ -146,7 +155,7 @@ def main():
             shops = buckets.get((ko, gu), [])
             if len(shops) < MIN_SHOPS:
                 continue
-            entry = {"shops": [to_shop(s) for s in shops]}
+            entry = {"shops": to_shops(shops)}
             pm = pop_menus(shops)
             if pm:
                 entry["pop"] = pm
@@ -161,7 +170,7 @@ def main():
                 if len(sub) < MIN_SHOPS:
                     print(f"    · {label}: {len(sub)}곳(생략)")
                     continue
-                entry = {"linkGu": cfg["gu"], "shops": [to_shop(s) for s in sub]}
+                entry = {"linkGu": cfg["gu"], "shops": to_shops(sub)}
                 pm = pop_menus(sub)
                 if pm:
                     entry["pop"] = pm

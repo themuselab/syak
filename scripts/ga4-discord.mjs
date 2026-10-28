@@ -52,6 +52,7 @@ const [
   m30Users, m30Reserve, m30Views,
   topShops, acq,
   ySeoLand, ySeoCta, w7SeoLand, w7SeoCta, topSeoPages,
+  yAppClick, w7AppClick, appByPlacement,
 ] = await Promise.all([
   metric('activeUsers', YtoD),
   metric('sessions', YtoD),
@@ -72,6 +73,10 @@ const [
   metric('eventCount', { start: '7daysAgo', event: 'seo_landing' }),
   metric('eventCount', { start: '7daysAgo', event: 'seo_cta_click' }),
   top('pagePath', 'eventCount', { start: '7daysAgo', event: 'seo_landing', limit: 10 }),
+  // 앱 유입: SEO 페이지의 App Store 버튼(app_install_click)
+  metric('eventCount', { ...YtoD, event: 'app_install_click' }),
+  metric('eventCount', { start: '7daysAgo', event: 'app_install_click' }),
+  top('pagePath', 'eventCount', { start: '7daysAgo', event: 'app_install_click', limit: 5 }),
 ]);
 
 const convRate = m30Views ? ((m30Reserve / m30Views) * 100).toFixed(1) + '%' : '-';
@@ -155,6 +160,14 @@ const seoField = {
   inline: false,
 };
 
+const appField = {
+  name: '📲 앱 설치 유도 (SEO 페이지 App Store 버튼)',
+  value: `어제 ${yAppClick.toLocaleString()} · 7일 ${w7AppClick.toLocaleString()}`
+       + (appByPlacement.length ? `
+많이 누른 페이지(7일): ${appByPlacement.map(a => `${a.key} ${a.value}`).join(' · ')}` : ''),
+  inline: false,
+};
+
 const embed = {
   title: '📊 GA4 일일 리포트 (샥)',
   color: 0xec4899,
@@ -164,6 +177,7 @@ const embed = {
     { name: '최근 30일', value: `MAU ${m30Users.toLocaleString()} · 예약클릭 ${m30Reserve.toLocaleString()} · 전환율 ${convRate}`, inline: true },
     { name: '인기 샵 Top5 (7일, 상세조회)', value: shopLines, inline: false },
     seoField,
+    appField,
     { name: '유입 채널 Top5 (7일, 세션)', value: acqLines, inline: false },
     ...partnerField,
   ],
@@ -175,7 +189,8 @@ console.log(`GA4: 어제 활성 ${yUsers} · 30일 MAU ${m30Users} · 예약클�
 
 console.log(`유입 채널(7일):
 ${acqLines}
-${seoField.value}`);
+${seoField.value}
+${appField.value}`);
 
 if (process.env.DRY_RUN === '1') { console.log('(DRY_RUN — 디스코드 전송 안 함)'); process.exit(0); }
 if (!WEBHOOK) { console.error('⚠️ DISCORD_WEBHOOK 없음 — 콘솔 출력만'); process.exit(0); }

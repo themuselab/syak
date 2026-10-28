@@ -14,6 +14,10 @@ const regions = JSON.parse(
 const SITE = regions.site;
 const CATS = regions.categories || {};
 const GA_ID = "G-Q0WLLSMTXM";
+// 앱 유입: iOS 앱스토어(출시됨). 안드로이드는 Play 비공개 테스트 중이라 공개 링크 없음 → 버튼 숨김.
+const IOS_APP_ID = "6807780736";
+// App Store Connect의 provider token(pt)을 넣으면 ct(캠페인)가 앱 분석의 "캠페인"별 설치로 잡힌다. 비우면 일반 링크.
+const APPSTORE_PT = "";
 
 // 전 카테고리에 등장하는 gu → 영문 슬러그 (역방향 조회용)
 const SLUG_TO_GU = {};
@@ -43,6 +47,28 @@ function cta(linkGu, cat, gu, placement, cls, label) {
   const on = `gtag('event','seo_cta_click',{category:'${cat}',region:${JSON.stringify(gu)},region_slug:${JSON.stringify(slugOf(gu))},placement:'${placement}'})`;
   return `<a class="${cls}" href="${href}" onclick="${esc(on)}">${label}</a>`;
 }
+
+function appStoreUrl(campaign) {
+  const base = `https://apps.apple.com/kr/app/id${IOS_APP_ID}`;
+  return APPSTORE_PT ? `${base}?pt=${APPSTORE_PT}&ct=${encodeURIComponent(campaign)}&mt=8` : base;
+}
+
+// 앱 설치 유도 — 클릭은 GA4 app_install_click(store·placement·category·region)로 잡아 디코 리포트에 집계.
+// 안드로이드 기기에선 숨김(공개 스토어 링크 없음). iOS 사파리는 상단 스마트 앱 배너도 함께 뜬다.
+function appBlock(cat, region, slug, placement) {
+  const on = `gtag('event','app_install_click',{store:'ios',category:'${cat}',region:${JSON.stringify(region)},region_slug:${JSON.stringify(slug)},placement:'${placement}'})`;
+  return `<div class="app" data-app>` +
+    `<div class="app-t"><b>샥 앱으로 빈자리 알림 받기</b><span>즐겨찾은 샵에 빈자리가 생기면 바로 알려드려요</span></div>` +
+    `<a class="app-b" href="${appStoreUrl(`seo-${cat}-${slug}`)}" target="_blank" rel="noopener" onclick="${esc(on)}">` +
+    `<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.4 12.6c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.1-.8 1.5 0 1.9.8 3.2.8 1.3 0 2.2-1.2 3-2.4.9-1.4 1.3-2.7 1.3-2.8-.1 0-2.5-1-2.5-3.9zM14 5.5c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1.1.1 2.1-.6 2.8-1.4z"/></svg>` +
+    `App Store에서 받기</a></div>`;
+}
+// 안드로이드면 앱 블록 숨김(스크립트 꺼져 있으면 그냥 보임 — 무해)
+const APP_HIDE_ANDROID = `<script>if(/Android/i.test(navigator.userAgent))document.querySelectorAll('[data-app]').forEach(function(e){e.style.display='none'})</script>`;
+const APP_BANNER_META = `<meta name="apple-itunes-app" content="app-id=${IOS_APP_ID}">`;
+const APP_CSS = `.app{display:flex;align-items:center;gap:12px;justify-content:space-between;background:#1f1f23;color:#fff;border-radius:14px;padding:14px 16px;margin:18px 0}` +
+  `.app-t{display:flex;flex-direction:column;gap:2px;min-width:0}.app-t b{font-size:15px}.app-t span{font-size:12px;color:#c9c9cf}` +
+  `.app-b{display:inline-flex;align-items:center;gap:6px;flex-shrink:0;background:#fff;color:#111;font-weight:800;font-size:13px;padding:9px 12px;border-radius:10px;text-decoration:none}`;
 
 function render(cat, gu, entry, catData, nowIso, freshLabel) {
   const info = CATEGORIES[cat];
@@ -86,6 +112,24 @@ function render(cat, gu, entry, catData, nowIso, freshLabel) {
       .replace(/\s+/g, " ");
   const url = `${SITE}/${cat}/${sl}/`;
 
+  // 사진 캐러셀 — 실제 매장 사진(앞쪽 최대 8곳). 이미지 alt에 "지역 업종 상호"를 넣어 이미지 검색·
+  // 네이버 대표 이미지 선정에 쓰이게 한다. CSS scroll-snap만 사용(스크립트 없음), 첫 2장 외 lazy.
+  const withPhoto = shops.filter((s) => s.ph);
+  const ogImage = withPhoto.length ? withPhoto[0].ph : `${SITE}/og.png`;
+  const carousel = withPhoto.length >= 3
+    ? `<h2>${esc(gu)} ${esc(place)} 사진으로 둘러보기</h2>` +
+      `<ul class="car" aria-label="${esc(gu)} ${esc(place)} 매장 사진">` +
+      withPhoto.map((s, i) =>
+        `<li><a href="${deepLink(lg, cat, gu)}" rel="nofollow" ` +
+          `onclick="gtag('event','seo_cta_click',{category:'${cat}',region:${JSON.stringify(gu)},placement:'carousel'})">` +
+          `<img src="${esc(s.ph)}" alt="${esc(`${gu} ${place} ${s.name}`)}" width="150" height="150"` +
+          `${i < 2 ? "" : ' loading="lazy"'} decoding="async" referrerpolicy="no-referrer">` +
+          `<span class="cn">${esc(s.name)}</span>` +
+          `<span class="cm">${esc(won(s.min) ? `${won(s.min)}~` : s.tier || "")}${s.today ? " · <em>오늘 예약</em>" : ""}</span>` +
+        `</a></li>`).join("") +
+      `</ul>`
+    : "";
+
   const cards = [];
   const itemsLd = [];
   shops.forEach((s, i) => {
@@ -107,7 +151,12 @@ function render(cat, gu, entry, catData, nowIso, freshLabel) {
     );
     itemsLd.push({
       "@type": "ListItem", position: i + 1,
-      item: { "@type": "BeautySalon", name: s.name, areaServed: gu },
+      item: {
+        "@type": "BeautySalon", name: s.name, areaServed: gu,
+        ...(s.ph ? { image: s.ph } : {}),
+        ...(s.road ? { address: { "@type": "PostalAddress", streetAddress: s.road, addressCountry: "KR" } } : {}),
+        ...(s.min ? { priceRange: `${won(s.min)}~` } : {}),
+      },
     });
   });
 
@@ -119,7 +168,8 @@ function render(cat, gu, entry, catData, nowIso, freshLabel) {
     "@context": "https://schema.org", "@type": "BreadcrumbList",
     itemListElement: [
       { "@type": "ListItem", position: 1, name: "샥", item: `${SITE}/` },
-      { "@type": "ListItem", position: 2, name: `${gu} ${place}`, item: url },
+      { "@type": "ListItem", position: 2, name: `전국 ${place}`, item: `${SITE}/${cat}/` },
+      { "@type": "ListItem", position: 3, name: `${gu} ${place}`, item: url },
     ],
   };
 
@@ -198,12 +248,14 @@ function render(cat, gu, entry, catData, nowIso, freshLabel) {
 <meta property="og:title" content="${esc(title)}">
 <meta property="og:description" content="${esc(desc)}">
 <meta property="og:url" content="${url}">
-<meta property="og:image" content="${SITE}/og.png">
+<meta property="og:image" content="${esc(ogImage)}">
+<meta property="og:image:alt" content="${esc(`${gu} ${place}`)}">
 <meta property="og:locale" content="ko_KR">
+${APP_BANNER_META}
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${esc(title)}">
 <meta name="twitter:description" content="${esc(desc)}">
-<meta name="twitter:image" content="${SITE}/og.png">
+<meta name="twitter:image" content="${esc(ogImage)}">
 ${gaSnippet}
 <script type="application/ld+json">${JSON.stringify(ld)}</script>
 <script type="application/ld+json">${JSON.stringify(bcLd)}</script>
@@ -233,6 +285,11 @@ ul{list-style:none;padding:0;margin:0}.card{border-top:1px solid #f1f1f3}.card a
 .fresh{font-size:12px;color:#b9739a;margin:2px 0 0}
 .src{font-size:12px;color:#aaa;margin:18px 0 0;line-height:1.7}
 footer{margin-top:30px;font-size:12px;color:#aaa}
+.car{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;margin:6px -16px 0;padding:4px 16px 10px;scroll-padding-left:16px;-webkit-overflow-scrolling:touch}
+.car li{flex:0 0 150px;scroll-snap-align:start}.car a{display:block;text-decoration:none;color:inherit}
+.car img{display:block;width:150px;height:150px;object-fit:cover;border-radius:12px;background:#f4f4f5}
+.cn{display:block;font-size:13px;font-weight:700;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cm{display:block;font-size:12px;color:#888}.cm em{font-style:normal;color:#16a34a;font-weight:700}
+${APP_CSS}
 </style>
 </head>
 <body><div class="wrap">
@@ -248,16 +305,18 @@ ${tldr}
 </div>
 ${bandHtml ? `<h2>${esc(gu)} ${esc(place)} 가격대 분포</h2><div class="bars">${bandHtml}</div>` : ""}
 ${cta(lg, cat, gu, "cta_top", "cta", `샥에서 ${esc(gu)} 빈자리 보기 →`)}
+${carousel}
 <h2>${esc(gu)} ${esc(place)} 목록</h2>
 <ul>${cards.join("")}</ul>
 ${cta(lg, cat, gu, "cta_bottom", "cta", "지금 예약 가능한 곳 지도로 보기 →")}
+${appBlock(cat, gu, sl, "region")}
 ${popHtml}
 <h2>자주 묻는 질문</h2>
 <dl class="faq">${faqHtml}</dl>
 <div class="links"><b style="color:#666">다른 지역 ${esc(label)}</b> · <a href="/${cat}/" style="color:#ec4899;font-weight:600">전국 ${esc(place)} 전체보기</a><br>${links}</div>
 <p class="src">이 페이지의 가격·예약 정보는 <b>샥(syak)</b>이 ${esc(gu)}의 ${esc(place)}을 직접 수집·집계한 1차 데이터입니다. ${esc(freshLabel)} 기준이며, 실시간 예약 빈자리는 샥에서 확인할 수 있습니다.</p>
 <footer>샥(syak) · 지금 예약 되는 동네 뷰티샵 · <a href="${SITE}" style="color:#aaa">themuselab.kr</a></footer>
-</div></body></html>`;
+</div>${APP_HIDE_ANDROID}</body></html>`;
 }
 
 // 카테고리 허브(/{cat}/) — 전 지역 링크 모음. 내부링크 그래프 강화(색인율↑).
@@ -274,6 +333,13 @@ function renderHub(cat, catData, nowIso, freshLabel) {
   const crossHub = Object.keys(CATEGORIES)
     .filter((c) => c !== cat && CATS[c])
     .map((c) => `<a class="tab" href="/${c}/">${esc(CATEGORIES[c].place)}</a>`).join("");
+  const bcLd = {
+    "@context": "https://schema.org", "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "샥", item: `${SITE}/` },
+      { "@type": "ListItem", position: 2, name: `전국 ${place}`, item: url },
+    ],
+  };
   const pageLd = {
     "@context": "https://schema.org", "@type": "CollectionPage",
     name: title, url, inLanguage: "ko-KR", dateModified: nowIso, description: desc,
@@ -292,10 +358,16 @@ function renderHub(cat, catData, nowIso, freshLabel) {
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(desc)}">
 <link rel="canonical" href="${url}">
+<meta name="theme-color" content="#ec4899">
+<meta property="og:type" content="website"><meta property="og:site_name" content="샥"><meta property="og:locale" content="ko_KR">
 <meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}">
 <meta property="og:url" content="${url}"><meta property="og:image" content="${SITE}/og.png">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${esc(title)}">
+<meta name="twitter:description" content="${esc(desc)}"><meta name="twitter:image" content="${SITE}/og.png">
+${APP_BANNER_META}
 ${gaSnippet}
 <script type="application/ld+json">${JSON.stringify(pageLd)}</script>
+<script type="application/ld+json">${JSON.stringify(bcLd)}</script>
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:-apple-system,'Apple SD Gothic Neo',sans-serif;color:#222;background:#fff;line-height:1.6}
 .wrap{max-width:760px;margin:0 auto;padding:22px 16px 60px}
@@ -303,7 +375,9 @@ h1{font-size:24px;margin:8px 0 6px}.sub{color:#666;font-size:14px;margin:0 0 14p
 .tabs{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 18px}.tab{font-size:13px;font-weight:700;padding:6px 12px;border-radius:999px;background:#f4f4f5;color:#555;text-decoration:none}
 .cta{display:block;text-align:center;background:#ec4899;color:#fff;font-weight:800;font-size:16px;padding:15px;border-radius:14px;text-decoration:none;margin:18px 0}
 .regions{font-size:14px;line-height:2.1}.regions a{color:#ec4899;text-decoration:none;font-weight:600}
+h2{font-size:17px;margin:26px 0 6px}
 footer{margin-top:30px;font-size:12px;color:#aaa}
+${APP_CSS}
 </style></head>
 <body><div class="wrap">
 <h1>전국 ${esc(place)} · 지역별 당일 예약 가격비교</h1>
@@ -312,8 +386,9 @@ footer{margin-top:30px;font-size:12px;color:#aaa}
 <a class="cta" href="${SITE}/?cat=${encodeURIComponent(label)}">샥에서 내 주변 ${esc(place)} 지도로 보기 →</a>
 <h2>지역별 ${esc(place)}</h2>
 <p class="regions">${regionLinks}</p>
+${appBlock(cat, "전국", "hub", "hub")}
 <footer>샥(syak) · 지금 예약 되는 동네 뷰티샵 · <a href="${SITE}" style="color:#aaa">themuselab.kr</a></footer>
-</div></body></html>`;
+</div>${APP_HIDE_ANDROID}</body></html>`;
 }
 
 // 진짜 없는 페이지 → 404(noindex). 소프트404(200 반환) 회피 — 색인 예산 보호.

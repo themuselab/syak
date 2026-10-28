@@ -7,6 +7,7 @@
   "rewrites": [
     { "source": "/privacy", "destination": "/privacy.html" },
     { "source": "/sitemap.xml", "destination": "/api/sitemap" },
+    { "source": "/rss.xml", "destination": "/api/rss" },
     { "source": "/:cat(nail|hair|waxing|eyelash|pmu|massage|skincare|tanning)/:gu", "destination": "/api/seo?cat=:cat&gu=:gu" },
     { "source": "/:cat(nail|hair|waxing|eyelash|pmu|massage|skincare|tanning)/:gu/", "destination": "/api/seo?cat=:cat&gu=:gu" },
     { "source": "/:cat(nail|hair|waxing|eyelash|pmu|massage|skincare|tanning)", "destination": "/api/seo?cat=:cat" },
