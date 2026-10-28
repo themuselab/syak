@@ -21,8 +21,19 @@ const client = new BetaAnalyticsDataClient({
 });
 const num = v => Number(v ?? 0) || 0;
 
+// GA4 Data API는 속성당 동시 요청 10개 제한(RESOURCE_EXHAUSTED). 리포트 항목이 늘어 한꺼번에 25개쯤
+// 날리게 돼서, 실제 요청은 5개씩만 동시에 보낸다.
+let running = 0;
+const waiting = [];
+async function runReport(req) {
+  if (running >= 5) await new Promise(r => waiting.push(r));
+  running++;
+  try { return await client.runReport(req); }
+  finally { running--; waiting.shift()?.(); }
+}
+
 async function metric(metricName, { start, end = 'today', event } = {}) {
-  const [res] = await client.runReport({
+  const [res] = await runReport({
     property: PROPERTY,
     dateRanges: [{ startDate: start, endDate: end }],
     metrics: [{ name: metricName }],
@@ -35,7 +46,7 @@ async function metric(metricName, { start, end = 'today', event } = {}) {
 async function hostMetric(metricName, host, { start, end = 'today', event } = {}) {
   const host_ = { filter: { fieldName: 'hostName', stringFilter: { value: host } } };
   const ev = event ? { filter: { fieldName: 'eventName', stringFilter: { value: event } } } : null;
-  const [res] = await client.runReport({
+  const [res] = await runReport({
     property: PROPERTY,
     dateRanges: [{ startDate: start, endDate: end }],
     metrics: [{ name: metricName }],
@@ -45,7 +56,7 @@ async function hostMetric(metricName, host, { start, end = 'today', event } = {}
 }
 
 async function top(dimension, metricName, { start, end = 'today', event, limit = 5 } = {}) {
-  const [res] = await client.runReport({
+  const [res] = await runReport({
     property: PROPERTY,
     dateRanges: [{ startDate: start, endDate: end }],
     dimensions: [{ name: dimension }],
