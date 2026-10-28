@@ -10,7 +10,7 @@ env: API_BASE_URL, INTERNAL_API_KEY  (로컬은 같은 폴더 .env)
 저장: 백엔드 internal API(RDS). 예전엔 Supabase에 바로 썼는데 2026-08 Supabase 삭제 후
 2달간 매일 실패했다(앱 할인 정보가 8월에 멈춤) → 2026-10-22 백엔드로 이전.
 """
-import json, os, random, re, sys, time, urllib.error, urllib.request, zlib
+import json, os, random, re, sys, threading, time, urllib.error, urllib.request, zlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -33,6 +33,40 @@ if not API_BASE or not API_KEY:
 SHARD = int(ENV.get("SHARD", "0"))
 NUM_SHARDS = int(ENV.get("NUM_SHARDS", "1"))
 BUDGET_SEC = int(ENV.get("BUDGET_SEC", "840"))  # 시간예산 14분 — 넘으면 받은 것만 저장
+
+# 속도 조절 — 차단 원인은 IP가 아니라 속도였다(2026-10-28 진단, scraper/diag_events.py).
+# 같은 러너에서 하나씩 보내면 60곳 중 59곳 성공, 12개 동시면 23곳이 "데이터 없는 껍데기 페이지"(200)로 옴.
+# 그래서 러너 전체 요청 간격을 두고, 껍데기가 오면 잠깐 멈추고 간격을 늘린다(성공이 이어지면 다시 줄임).
+WORKERS = int(ENV.get("EVENT_WORKERS", "3"))
+GAP_MIN = float(ENV.get("EVENT_GAP_SEC", "0.35"))  # 러너 전체 요청 간격 하한(초)
+GAP_MAX = 3.0
+COOLDOWN_SEC = 15
+
+
+class Pace:
+    def __init__(self):
+        self.gap, self.next_at, self.lock = GAP_MIN, 0.0, threading.Lock()
+        self.blocks = 0
+
+    def wait(self):
+        with self.lock:
+            now = time.time()
+            at = max(now, self.next_at)
+            self.next_at = at + self.gap
+        time.sleep(max(0.0, at - now))
+
+    def ok(self):
+        with self.lock:
+            self.gap = max(GAP_MIN, self.gap * 0.97)
+
+    def blocked(self):
+        with self.lock:
+            self.blocks += 1
+            self.gap = min(GAP_MAX, self.gap * 1.5)
+            self.next_at = max(self.next_at, time.time() + COOLDOWN_SEC)
+
+
+PACE = Pace()
 
 UA = {"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15"}
 
@@ -107,23 +141,24 @@ def parse_event(html):
     return None, None
 
 
-def fetch_one(r, tries=2):  # 빠른 실패 — 차단은 재시도해도 안 풀림(같은 IP). skip 후 다음 회차에.
+def fetch_one(r):
+    # 껍데기 페이지(속도 제한)는 바로 재시도하면 더 막힌다 → 이번 회차는 건너뛰고(기존값 보존) 전체 속도를 늦춘다.
     item = (r.get("item_ids") or ([r["item_id"]] if r.get("item_id") else [None]))[0]
     if not item:
         return r["id"], None, None
     url = f"https://m.booking.naver.com/booking/{r.get('biz_type') or 13}/bizes/{r['biz_id']}/items/{item}"
-    for i in range(tries):
-        try:
-            html = urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=20).read().decode("utf-8", "ignore")
-            # 유효 예약페이지는 항상 eventDescJson 포함 → 없으면 차단/비정상 페이지 → 재시도
-            if "eventDescJson" not in html:
-                raise RuntimeError("blocked")
-            ed, ep = parse_event(html)
-            return r["id"], ed, ep
-        except Exception:
-            if i == tries - 1:
-                return r["id"], "__ERR__", None
-            time.sleep(0.5)  # 짧게 한 번만 재시도 (긴 백오프 X — 차단 회복 안 됨)
+    PACE.wait()
+    try:
+        html = urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=20).read().decode("utf-8", "ignore")
+    except Exception:
+        return r["id"], "__ERR__", None
+    # 유효 예약페이지는 항상 eventDescJson 포함 → 없으면 속도 제한에 걸린 껍데기 페이지
+    if "eventDescJson" not in html:
+        PACE.blocked()
+        return r["id"], "__ERR__", None
+    PACE.ok()
+    ed, ep = parse_event(html)
+    return r["id"], ed, ep
 
 
 def upsert_rows(rows):
@@ -148,7 +183,7 @@ def main():
     rows, found, err = [], 0, 0
     done = 0
     timed_out = False
-    ex = ThreadPoolExecutor(max_workers=12)
+    ex = ThreadPoolExecutor(max_workers=WORKERS)
     futs = [ex.submit(fetch_one, r) for r in targets]
     for fut in as_completed(futs):
         if time.time() > deadline:
@@ -175,7 +210,7 @@ def main():
     up = 0
     try:
         up = upsert_rows(rows)
-        print(f"✅ 완료: {up:,}곳 갱신 | 할인중 {found:,}곳 | 에러 {err} | {time.time()-t0:.0f}초")
+        print(f"✅ 완료: {up:,}곳 갱신 | 할인중 {found:,}곳 | 에러 {err}(속도제한 {PACE.blocks}) | 최종 간격 {PACE.gap:.2f}s | {time.time()-t0:.0f}초")
     except Exception as ex:
         print(f"⚠️ 업서트 실패({up:,}건까지 됨): {ex}")
         print("   → 컬럼 추가 후 `python enrich_events.py --from-cache` 로 재시도하세요.")
