@@ -44,3 +44,5 @@ scraper/*.log
 .claude/skills/archify/
 # 수집 진단 스크립트가 저장하는 응답 표본
 scraper/diag_samples/
+# Archify 작업 폴더(검증 영수증·캡처)
+.archify/

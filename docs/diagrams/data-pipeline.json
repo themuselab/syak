@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "샥 데이터 수집 파이프라인",
+    "locale": "ko",
+    "output": "docs/diagrams/data-pipeline.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/themuselab/syak.git",
+      "provider": "github",
+      "revision": "a6358f0b133b2545a4c8efd6a05b86557db36a74"
+    }
+  },
+  "stages": [
+    { "label": "네이버 원천" },
+    { "label": "수집 (GitHub Actions)" },
+    { "label": "백엔드 · RDS" },
+    { "label": "가공 · 리포트" },
+    { "label": "소비" }
+  ],
+  "nodes": [
+    { "id": "naver-gql", "type": "external", "label": "네이버 예약 API", "sublabel": "GraphQL hourlySchedule", "stage": 0, "row": 0,
+      "sources": [{ "path": "scraper/slot_ingest.py", "line": 36, "label": "GQL endpoint" }] },
+    { "id": "naver-booking", "type": "external", "label": "네이버 예약 페이지", "sublabel": "m.booking.naver.com", "stage": 0, "row": 1,
+      "sources": [{ "path": "scraper/enrich_events.py", "line": 144, "end_line": 161, "label": "fetch_one" }] },
+    { "id": "naver-place", "type": "external", "label": "네이버 플레이스", "sublabel": "pcmap.place.naver.com", "stage": 0, "row": 2,
+      "sources": [
+        { "path": "scraper/price_sync.py", "line": 228, "end_line": 250, "label": "home·review 페이지" },
+        { "path": "scraper/sync_partners.py", "line": 72, "end_line": 76, "label": "photo 페이지" }
+      ] },
+    { "id": "slot-ingest", "type": "backend", "label": "slot_ingest.py", "sublabel": "빈 시간 · 6샤드", "tag": "slots.yml 매시", "stage": 1, "row": 0,
+      "sources": [
+        { "path": ".github/workflows/slots.yml", "line": 1, "end_line": 46 },
+        { "path": "scraper/slot_ingest.py", "line": 241, "end_line": 314, "label": "main" }
+      ] },
+    { "id": "enrich-events", "type": "backend", "label": "enrich_events.py", "sublabel": "할인 · 4샤드", "tag": "events.yml 3시간", "stage": 1, "row": 1,
+      "sources": [
+        { "path": ".github/workflows/events.yml", "line": 1, "end_line": 32 },
+        { "path": "scraper/enrich_events.py", "line": 1, "end_line": 12 },
+        { "path": "scraper/enrich_events.py", "line": 164, "end_line": 169, "label": "upsert_rows" }
+      ] },
+    { "id": "price-sync", "type": "backend", "label": "price_sync.py", "sublabel": "가격·영업시간·리뷰", "tag": "price-sync.yml 30분", "stage": 1, "row": 2,
+      "sources": [
+        { "path": ".github/workflows/price-sync.yml", "line": 1, "end_line": 42 },
+        { "path": "scraper/price_sync.py", "line": 294, "end_line": 347, "label": "main" }
+      ] },
+    { "id": "sync-partners", "type": "backend", "label": "sync_partners.py", "sublabel": "파트너 사진·메뉴", "tag": "partners.yml 매시", "stage": 1, "row": 3,
+      "sources": [
+        { "path": ".github/workflows/partners.yml", "line": 1, "end_line": 29 },
+        { "path": "scraper/sync_partners.py", "line": 154, "end_line": 160 }
+      ] },
+    { "id": "today-open", "type": "backend", "label": "today-open.yml", "sublabel": "초록핀 재계산", "tag": "15분", "stage": 1, "row": 4,
+      "sources": [
+        { "path": ".github/workflows/today-open.yml", "line": 1, "end_line": 27 },
+        { "path": "scraper/slot_ingest.py", "line": 342, "end_line": 352, "label": "reconcile" }
+      ] },
+    { "id": "backend", "type": "backend", "label": "syak 백엔드", "sublabel": "/internal/* API", "tag": "X-Internal-Key", "stage": 2, "row": 1,
+      "sources": [
+        { "path": "scraper/slot_ingest.py", "line": 87, "end_line": 110, "label": "slot_sync 호출" },
+        { "path": "scraper/slot_ingest.py", "line": 113, "end_line": 174, "label": "알림 dispatch" },
+        { "path": "src/shared/platform/api.ts", "line": 1, "end_line": 5, "label": "웹 API base" }
+      ] },
+    { "id": "rds", "type": "database", "label": "RDS", "sublabel": "shops · slots", "stage": 2, "row": 3,
+      "sources": [
+        { "path": "scraper/slot_ingest.py", "line": 295, "end_line": 297 },
+        { "path": "scraper/enrich_events.py", "line": 9, "end_line": 11 }
+      ] },
+    { "id": "ga4", "type": "external", "label": "GA4", "sublabel": "웹 이벤트", "stage": 2, "row": 4,
+      "sources": [
+        { "path": "index.html", "line": 17, "end_line": 24, "label": "gtag" },
+        { "path": "scripts/ga4-discord.mjs", "line": 10, "end_line": 21 }
+      ] },
+    { "id": "seo-generate", "type": "backend", "label": "seo_generate.py", "sublabel": "→ api/regions.json", "tag": "수동 실행", "stage": 3, "row": 0,
+      "sources": [
+        { "path": "scraper/seo_generate.py", "line": 1, "end_line": 9 },
+        { "path": "scraper/seo_generate.py", "line": 140, "end_line": 190, "label": "main" }
+      ] },
+    { "id": "reports", "type": "backend", "label": "일일 리포트", "sublabel": "ga4/app-discord.mjs", "tag": "매일 08시", "stage": 3, "row": 3,
+      "sources": [
+        { "path": "scripts/ga4-discord.mjs", "line": 115, "end_line": 158, "label": "백엔드 조회" },
+        { "path": "scripts/app-discord.mjs", "line": 9, "end_line": 18 },
+        { "path": ".github/workflows/ga4-discord.yml", "line": 1, "end_line": 36 }
+      ] },
+    { "id": "seo-pages", "type": "cloud", "label": "Vercel SEO 함수", "sublabel": "/nail/gu · sitemap · rss", "stage": 4, "row": 0,
+      "sources": [
+        { "path": "api/seo.js", "line": 1, "end_line": 15 },
+        { "path": "api/sitemap.js", "line": 1, "end_line": 11 },
+        { "path": "vercel.json", "line": 1, "end_line": 16 }
+      ] },
+    { "id": "web-spa", "type": "frontend", "label": "웹 SPA", "sublabel": "www.themuselab.kr", "stage": 4, "row": 1,
+      "sources": [
+        { "path": "src/app/composition-root.ts", "line": 20, "end_line": 29 },
+        { "path": "src/shared/platform/api.ts", "line": 1, "end_line": 36 }
+      ] },
+    { "id": "app-push", "type": "frontend", "label": "앱 푸시", "sublabel": "새 빈자리 알림", "stage": 4, "row": 2,
+      "sources": [{ "path": "scraper/slot_ingest.py", "line": 113, "end_line": 120, "label": "FCM 위임" }] },
+    { "id": "discord", "type": "external", "label": "Discord", "sublabel": "운영 채널", "stage": 4, "row": 3,
+      "sources": [
+        { "path": "scripts/ga4-discord.mjs", "line": 238, "end_line": 245 },
+        { "path": "scripts/app-discord.mjs", "line": 70, "end_line": 76 }
+      ] }
+  ],
+  "flows": [
+    { "id": "gql-slots", "from": "naver-gql", "to": "slot-ingest", "label": "빈 시간", "variant": "emphasis" },
+    { "id": "booking-events", "from": "naver-booking", "to": "enrich-events", "label": "eventDescJson" },
+    { "id": "place-prices", "from": "naver-place", "to": "price-sync", "label": "가격·리뷰" },
+    { "id": "place-partners", "from": "naver-place", "to": "sync-partners", "label": "사진·메뉴" },
+    { "id": "slots-sync", "from": "slot-ingest", "to": "backend", "label": "slots/sync", "variant": "emphasis" },
+    { "id": "events-post", "from": "enrich-events", "to": "backend", "label": "shops/events" },
+    { "id": "prices-post", "from": "price-sync", "to": "backend", "label": "shops/prices" },
+    { "id": "partners-post", "from": "sync-partners", "to": "backend", "label": "shops/enrich" },
+    { "id": "reconcile", "from": "today-open", "to": "backend", "label": "재계산" },
+    { "id": "persist", "from": "backend", "to": "rds", "label": "upsert", "variant": "emphasis" },
+    { "id": "seo-read", "from": "backend", "to": "seo-generate", "label": "shops/seo" },
+    { "id": "regions", "from": "seo-generate", "to": "seo-pages", "label": "regions.json", "variant": "dashed" },
+    { "id": "web-read", "from": "backend", "to": "web-spa", "label": "/web/shops", "variant": "emphasis" },
+    { "id": "push", "from": "backend", "to": "app-push", "label": "FCM 푸시" },
+    { "id": "metrics", "from": "backend", "to": "reports", "label": "app-metrics" },
+    { "id": "ga4-read", "from": "ga4", "to": "reports", "label": "runReport" },
+    { "id": "webhook", "from": "reports", "to": "discord", "label": "webhook", "variant": "dashed" }
+  ],
+  "cards": [
+    { "dot": "emerald", "title": "수집 → 저장", "items": [
+      "모든 수집 잡은 DB에 직접 쓰지 않고 백엔드 /internal/* API(X-Internal-Key)로 보냄",
+      "slot_ingest는 샤드별 예산(13분) 안에 끝난 샵만 갱신하고, 실패 샵은 기존 슬롯 보존",
+      "slots/sync 응답의 새 빈자리를 /notifications/internal/dispatch로 보내 푸시"
+    ] },
+    { "dot": "amber", "title": "차단 회피", "items": [
+      "slots·events는 러너 여러 대(다른 IP)로 샤딩, price-sync는 1대 + 롤링 큐",
+      "price_synced_at 도장으로 가장 오래 안 본 샵부터 순환"
+    ] },
+    { "dot": "violet", "title": "SEO 데이터", "items": [
+      "seo_generate.py는 워크플로 없이 수동 실행 — 생성된 regions.json을 커밋해 배포",
+      "seo.js · sitemap.js · rss.js가 같은 regions.json을 읽음"
+    ] }
+  ]
+}

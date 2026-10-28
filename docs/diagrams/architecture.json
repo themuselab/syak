@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "샥 웹 · Vercel 구성",
+    "locale": "ko",
+    "output": "docs/diagrams/architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/themuselab/syak.git",
+      "provider": "github",
+      "revision": "a6358f0b133b2545a4c8efd6a05b86557db36a74"
+    }
+  },
+  "components": [
+    { "id": "visitor", "type": "external", "label": "방문자", "sublabel": "브라우저", "pos": [40, 60], "size": [150, 60],
+      "sources": [{ "path": "index.html", "line": 1, "end_line": 16 }] },
+    { "id": "crawler", "type": "external", "label": "검색·AI 크롤러", "sublabel": "Google · Naver · GEO", "pos": [40, 200], "size": [150, 60],
+      "sources": [{ "path": "api/seo.js", "line": 1, "end_line": 6 }] },
+    { "id": "vercel", "type": "cloud", "label": "Vercel", "sublabel": "vercel.json rewrites", "pos": [290, 60], "size": [150, 60],
+      "sources": [{ "path": "vercel.json", "line": 1, "end_line": 16 }] },
+    { "id": "spa", "type": "frontend", "label": "웹 SPA", "sublabel": "Vite + React", "pos": [540, 60], "size": [150, 60],
+      "sources": [
+        { "path": "src/app/composition-root.ts", "line": 1, "end_line": 29 },
+        { "path": "src/shared/platform/api.ts", "line": 1, "end_line": 36 }
+      ] },
+    { "id": "backend", "type": "backend", "label": "syak 백엔드", "sublabel": "api.themuselab.kr", "pos": [790, 60], "size": [150, 60],
+      "sources": [{ "path": "src/shared/platform/api.ts", "line": 1, "end_line": 5 }] },
+    { "id": "seo-fn", "type": "backend", "label": "SEO 함수", "sublabel": "api/seo·sitemap·rss", "pos": [290, 200], "size": [150, 60],
+      "sources": [
+        { "path": "api/seo.js", "line": 426, "end_line": 467, "label": "handler" },
+        { "path": "api/sitemap.js", "line": 1, "end_line": 13 },
+        { "path": "api/rss.js", "line": 1, "end_line": 21 }
+      ] },
+    { "id": "ga4", "type": "external", "label": "GA4", "sublabel": "gtag + Meta Pixel", "pos": [540, 200], "size": [150, 60],
+      "sources": [
+        { "path": "index.html", "line": 17, "end_line": 24 },
+        { "path": "src/contexts/analytics/infrastructure/ga4-analytics-sink.ts", "line": 1, "end_line": 2 }
+      ] },
+    { "id": "regions", "type": "database", "label": "regions.json", "sublabel": "지역×카테고리", "pos": [290, 340], "size": [150, 60],
+      "sources": [{ "path": "api/seo.js", "line": 6, "end_line": 15 }] },
+    { "id": "seo-gen", "type": "backend", "label": "seo_generate.py", "sublabel": "수동 실행", "pos": [790, 340], "size": [150, 60],
+      "sources": [{ "path": "scraper/seo_generate.py", "line": 140, "end_line": 193 }] },
+    { "id": "indexnow", "type": "backend", "label": "indexnow.mjs", "sublabel": "sitemap URL 전체", "pos": [40, 340], "size": [150, 60],
+      "sources": [{ "path": "scripts/indexnow.mjs", "line": 1, "end_line": 32 }] },
+    { "id": "naver-sa", "type": "external", "label": "네이버 서치어드바이저", "sublabel": "IndexNow", "pos": [40, 480], "size": [150, 60],
+      "sources": [{ "path": "scripts/indexnow.mjs", "line": 11, "end_line": 13 }] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Vercel 배포", "wraps": ["vercel", "seo-fn", "regions"] }
+  ],
+  "connections": [
+    { "id": "visit", "from": "visitor", "to": "vercel", "label": "HTTPS", "variant": "emphasis" },
+    { "id": "crawl", "from": "crawler", "to": "vercel", "label": "/nail/:gu" },
+    { "id": "serve-spa", "from": "vercel", "to": "spa", "label": "dist/ 정적", "variant": "emphasis" },
+    { "id": "rewrite", "from": "vercel", "to": "seo-fn", "label": "rewrite" },
+    { "id": "rest", "from": "spa", "to": "backend", "label": "REST /web/*", "variant": "emphasis" },
+    { "id": "track", "from": "spa", "to": "ga4", "label": "이벤트", "variant": "dashed" },
+    { "id": "read-regions", "from": "seo-fn", "to": "regions", "label": "읽기" },
+    { "id": "seo-export", "from": "backend", "to": "seo-gen", "label": "shops/seo" },
+    { "id": "write-regions", "from": "seo-gen", "to": "regions", "label": "regions.json 생성", "variant": "dashed" },
+    { "id": "ping", "from": "indexnow", "to": "naver-sa", "label": "URL 목록" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "라우팅", "items": [
+      "/privacy, /sitemap.xml, /rss.xml, /{nail|hair|…}/{gu}만 rewrite, 나머지는 SPA",
+      "SEO 페이지는 SPA가 아니라 서버리스 함수가 완성 HTML 렌더(s-maxage 1시간)"
+    ] },
+    { "dot": "emerald", "title": "SPA 데이터", "items": [
+      "카탈로그·슬롯·알림신청 모두 백엔드 /api/v1/web/* 호출(5xx 재시도 3회)",
+      "이벤트는 GA4로, VITE_META_PIXEL_ID 있으면 Meta Pixel에도 전송"
+    ] },
+    { "dot": "violet", "title": "수동 스크립트", "items": [
+      "seo_generate.py: 백엔드 데이터로 regions.json 갱신 후 커밋·배포",
+      "indexnow.mjs: sitemap.xml의 URL을 네이버 IndexNow로 재수집 요청"
+    ] }
+  ]
+}

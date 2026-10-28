@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "c809b022-f23d-4ce3-aa2f-55c90cb3413a",
+  "status": "current",
+  "command": "deliver",
+  "type": "dataflow",
+  "input": "C:\\Users\\someh\\Desktop\\창업\\syak\\web\\docs\\diagrams\\data-pipeline.json",
+  "output": "C:\\Users\\someh\\Desktop\\창업\\syak\\web\\docs\\diagrams\\data-pipeline.html",
+  "specification": {
+    "sha256": "95882b49684d0fdfb73cd480dc8391f69af610247d1edaefd11bb03a83369166",
+    "bytes": 9029
+  },
+  "artifact": {
+    "sha256": "f8214a55946c35ad7c0df38bc559d0e25f0d2bdc827969ca93bda902998cadc3",
+    "bytes": 867809
+  }
+}

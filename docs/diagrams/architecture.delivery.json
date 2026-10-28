@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "15deb9c6-0af6-4fa8-a28a-3f941c841f5a",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "C:\\Users\\someh\\Desktop\\창업\\syak\\web\\docs\\diagrams\\architecture.json",
+  "output": "C:\\Users\\someh\\Desktop\\창업\\syak\\web\\docs\\diagrams\\architecture.html",
+  "specification": {
+    "sha256": "2983407c2e3477cff36d7ea295c1173a364d86d333fd65389d6ea2bfb2adfbed",
+    "bytes": 5034
+  },
+  "artifact": {
+    "sha256": "de7ca0100e772f743fa38494322c254b14f8cb62541322ae36501fdde0905dc4",
+    "bytes": 856608
+  }
+}

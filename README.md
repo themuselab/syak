@@ -7,6 +7,21 @@
 
 ---
 
+## 아키텍처 · 데이터 흐름
+
+![데이터 수집 파이프라인](docs/diagrams/data-pipeline.png)
+
+인터랙티브 버전: [docs/diagrams/data-pipeline.html](docs/diagrams/data-pipeline.html)
+
+![웹 · Vercel 구성](docs/diagrams/architecture.png)
+
+인터랙티브 버전: [docs/diagrams/architecture.html](docs/diagrams/architecture.html)
+
+- 수집은 전부 GitHub Actions: `slots.yml`(빈자리, 매시) · `events.yml`(할인) · `price-sync.yml`(가격·영업시간·리뷰) · `partners.yml`(파트너 사진·메뉴)가 네이버를 읽어 백엔드 `/internal/*` API로 보내고, 백엔드가 RDS에 저장한다.
+- `slot_ingest.py`가 받은 새 빈자리는 백엔드 알림 API를 거쳐 앱 푸시로 나간다. `today-open.yml`은 네이버 없이 초록핀만 재계산한다.
+- 웹 SPA는 백엔드 `/api/v1/web/*`를 호출한다. SEO 랜딩(`/nail/:gu`)·sitemap·rss는 Vercel 함수가 `api/regions.json`(`seo_generate.py`로 수동 생성)을 읽어 렌더한다.
+- 매일 아침 `ga4-discord.yml` · `app-discord.yml`이 GA4와 백엔드 지표를 Discord로 보낸다.
+
 ## 주요 기능
 
 - 🗺️ **지도 탐색** — 카카오 지도 위 샵 핀(카테고리별 색), 클러스터링
