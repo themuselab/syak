@@ -34,3 +34,13 @@ jobs:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
         run: python scraper/diag_events.py ${{ github.event.inputs.n }} 1
+      - name: 플레이스(가격) 페이지 · 간격 2초
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
+        run: python scraper/diag_place.py 40 2
+      - name: 플레이스(가격) 페이지 · 간격 0.5초
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
+        run: python scraper/diag_place.py 40 0.5
