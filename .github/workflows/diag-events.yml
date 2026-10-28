@@ -1,0 +1,36 @@
+name: diag-events
+
+# 할인 수집 실패 원인 진단(수동 실행). 저장 안 함 — 응답 종류만 센다.
+on:
+  workflow_dispatch:
+    inputs:
+      n:
+        description: "표본 수"
+        default: "60"
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: 공인 IP
+        run: curl -s https://api.ipify.org; echo
+      - name: 하나씩(0.3초 간격)
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
+        run: python scraper/diag_events.py ${{ github.event.inputs.n }} 1
+      - name: 동시 12개(운영과 같음)
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
+        run: python scraper/diag_events.py ${{ github.event.inputs.n }} 12
+      - name: 다시 하나씩(동시 요청 직후)
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
+        run: python scraper/diag_events.py ${{ github.event.inputs.n }} 1
