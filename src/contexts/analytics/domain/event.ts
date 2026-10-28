@@ -30,5 +30,5 @@ export interface AnalyticsEvent {
   slotDate?: string; // reserve_click: 클릭한 슬롯 날짜 (전환 추적용)
   slotTime?: string; // reserve_click: 클릭한 슬롯 시간 "14:00"
   placement?: string; // app_open_click: 버튼 위치 (예: "map_fab")
-  store?: "ios" | "web"; // app_open_click: 이동 대상 (App Store | 앱 웹 버전)
+  store?: "ios" | "android" | "web"; // app_open_click: 이동 대상 (App Store | Google Play | 앱 웹 버전)
 }

@@ -385,8 +385,8 @@ export default function App() {
         </div>
       </header>
 
-      {/* 지도 */}
-      <div style={{ position: "absolute", inset: 0 }}>
+      {/* 지도 — isolation으로 별도 쌓임 맥락: 네이버 로고·축척(SDK가 큰 z-index를 줌)이 상세·모달 위로 비치지 않게 */}
+      <div style={{ position: "absolute", inset: 0, zIndex: 0, isolation: "isolate" }}>
         {error ? (
           <div style={{ padding: 24, paddingTop: 140, color: color.status.error, fontSize: 14 }}>데이터 로드 실패: {error}</div>
         ) : (
@@ -394,7 +394,7 @@ export default function App() {
         )}
       </div>
 
-      {/* 앱으로 보기 (지도 우하단) — iPhone/iPad는 App Store, 그 외는 앱 웹 버전(app.themuselab.kr) */}
+      {/* 앱으로 보기 (지도 우하단) — 설치 링크: iPhone·iPad·PC는 App Store, 안드로이드는 Play(공개 전엔 앱 웹 버전) */}
       <a
         href={appLink.url}
         target={appLink.sameTab ? undefined : "_blank"}

@@ -8,6 +8,15 @@ type Props = {
   onReset?: () => void;
 };
 
+// 시트 맨 아래 회사 표기(목록 끝까지 내렸을 때 보임)
+function SiteFooter() {
+  return (
+    <div style={{ fontSize: 12, color: color.text.faint, textAlign: "center", padding: "20px 16px 8px" }}>
+      © 2026 The Muse Lab · contact@themuselab.kr
+    </div>
+  );
+}
+
 /** 샵 리스트 (시트 본문). */
 export function ShopListSheet({ shops, onShopClick, onReset }: Props) {
   if (shops.length === 0) {
@@ -27,6 +36,7 @@ export function ShopListSheet({ shops, onShopClick, onReset }: Props) {
             필터 초기화
           </button>
         )}
+        <SiteFooter />
       </div>
     );
   }
@@ -49,6 +59,7 @@ export function ShopListSheet({ shops, onShopClick, onReset }: Props) {
           상위 120곳 표시 · 지역·필터로 좁혀보세요
         </div>
       )}
+      <SiteFooter />
     </div>
   );
 }
