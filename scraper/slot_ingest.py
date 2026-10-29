@@ -110,8 +110,10 @@ def slot_sync(payload):
     raise last
 
 
-def notify_new_slots(new_by_shop, slot_date):
-    """새로 생긴 '오늘' 빈자리를 백엔드 알림 엔드포인트로 밀어준다.
+def notify_new_slots(new_by_shop):
+    """새로 생긴 빈자리(오늘~모레)를 백엔드 알림 엔드포인트로 밀어준다.
+    new_by_shop = {shopId: [(날짜, "HH:MM"), ...]}. 백엔드가 즐겨찾기·주변은 오늘만,
+    '빈자리 알림 신청'(slot_alerts)은 신청한 날짜·시간과 맞는 것만 골라 보낸다.
 
     백엔드(syak_BE)의 POST /notifications/internal/dispatch 가
     즐겨찾기·주변 대상을 찾아 FCM 푸시 + 알림 저장을 한다.
@@ -142,10 +144,10 @@ def notify_new_slots(new_by_shop, slot_date):
         m = meta.get(sid)
         if not m:
             continue
-        for tm in times:
+        for d, tm in times:
             events.append({"shopId": str(sid), "shopName": m.get("name") or "샵",
                            "shopLat": m.get("lat"), "shopLng": m.get("lng"),
-                           "slotDate": slot_date, "slotTime": tm})
+                           "slotDate": d, "slotTime": tm})
     if not events:
         return
 
@@ -293,7 +295,7 @@ def main():
     print(f"   조회: 성공 {ok} 실패 {err}{' ⏱️예산초과(부분저장)' if timed_out else ''} | 갱신 {len(safe_ids)}곳 | 빈슬롯 {len(rows)}행 | {time.time()-t0:.0f}초")
 
     # ── 슬롯을 백엔드 internal API로 RDS에 동기화 (Supabase egress 회피) ──
-    # 백엔드가 날짜창 교체 + '오늘 신규 슬롯' 판정(초기적재 제외)까지 처리한다.
+    # 백엔드가 날짜창 교체 + 신규 슬롯 판정(오늘~모레, 그 날짜에 기존 슬롯 있던 샵만 — 초기적재 제외)까지 처리한다.
     # 한 샵이 한 번에 아주 많이 늘면 취소가 아니라 재적재로 보고 알림 생략(도배 방지).
     MAX_NEW_PER_SHOP = 8
     sync_slots = [{"shopId": str(v["shop_id"]), "date": v["slot_date"], "startTime": v["start_time"][:5]} for v in rows]
@@ -303,13 +305,16 @@ def main():
     try:
         resp = slot_sync(payload)
         print(f"✅ RDS 동기화: {resp.get('inserted', 0)}행 ({start_ymd}~{end_ymd}) · 신규 {resp.get('newCount', 0)}")
+        per_day = {}  # (샵, 날짜) → 시간들. 도배 방지 상한은 샵·날짜 단위
         for ns in resp.get("newSlots", []):
-            new_by_shop.setdefault(str(ns["shopId"]), []).append(str(ns["startTime"])[:5])
-        new_by_shop = {sid: t for sid, t in new_by_shop.items() if len(t) <= MAX_NEW_PER_SHOP}
+            per_day.setdefault((str(ns["shopId"]), str(ns["date"])[:10]), []).append(str(ns["startTime"])[:5])
+        for (sid, d), ts in per_day.items():
+            if len(ts) <= MAX_NEW_PER_SHOP:
+                new_by_shop.setdefault(sid, []).extend((d, t) for t in ts)
     except Exception as e:
         print(f"   ⚠️ 슬롯 RDS 동기화 실패: {e}")
     try:
-        notify_new_slots(new_by_shop, start_ymd)
+        notify_new_slots(new_by_shop)
     except Exception as e:
         print(f"   ⚠️ 알림 단계 예외(무시): {e}")
 
