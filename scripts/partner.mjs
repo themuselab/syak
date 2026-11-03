@@ -1,0 +1,52 @@
+#!/usr/bin/env node
+/**
+ * 파트너샵 등록·해제·목록 — 관리자 페이지 없이 팀이 직접 쓴다(백엔드 POST/GET /internal/partners).
+ *
+ *   node scripts/partner.mjs add <네이버 플레이스 링크|ID> [--code]   등록 (+ 사장님 인증코드 발급)
+ *   node scripts/partner.mjs remove <링크|ID>                        해제
+ *   node scripts/partner.mjs list                                     목록
+ *
+ * env: API_BASE_URL, INTERNAL_API_KEY. 선택: DISCORD_WEBHOOK(+ HIDE_CODE=1이면 인증코드를 화면 대신 디코로만 —
+ * 공개 레포 Actions 로그에 코드가 남지 않게 partner.yml이 이렇게 쓴다).
+ * 의존성 없음(Node 20 fetch)
+ */
+const BASE = (process.env.API_BASE_URL || '').replace(/\/$/, '');
+const KEY = process.env.INTERNAL_API_KEY;
+const WEBHOOK = process.env.DISCORD_WEBHOOK;
+const HIDE_CODE = process.env.HIDE_CODE === '1';
+if (!BASE || !KEY) { console.error('❌ API_BASE_URL / INTERNAL_API_KEY 필요'); process.exit(1); }
+
+const [cmd, place, ...rest] = process.argv.slice(2);
+const wantCode = rest.includes('--code');
+const api = async (method, path, body) => {
+  const r = await fetch(`${BASE}${path}`, {
+    method, headers: { 'X-Internal-Key': KEY, 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const json = await r.json().catch(() => ({}));
+  if (!r.ok) { console.error(`❌ ${r.status} ${json.code ?? ''} ${json.message ?? ''}`, json.details ?? ''); process.exit(1); }
+  return json;
+};
+const discord = (content) => WEBHOOK
+  ? fetch(WEBHOOK, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: '샥 파트너', content }) })
+  : Promise.resolve();
+
+if (cmd === 'list') {
+  const { partners } = await api('GET', '/internal/partners');
+  console.log(`파트너샵 ${partners.length}곳`);
+  for (const p of partners) console.log(`- ${p.name} (${p.gu || '-'}) · id ${p.id} · 사장님 ${p.owners} · 30일 빈자리 ${p.owner_slots_30d}`);
+} else if (cmd === 'add' || cmd === 'remove') {
+  if (!place) { console.error('❌ 네이버 플레이스 링크나 ID를 넣어주세요'); process.exit(1); }
+  const r = await api('POST', '/internal/partners', { place, partner: cmd === 'add', issueCode: cmd === 'add' && wantCode });
+  const verb = cmd === 'add' ? (r.created ? '새로 만들고 파트너 등록' : '파트너 등록') : '파트너 해제';
+  console.log(`✅ ${r.name} (id ${r.shopId}) ${verb}`);
+  if (r.code) {
+    const line = `🔑 ${r.name} 사장님 인증코드: **${r.code.code}** (만료 ${String(r.code.expiresAt).slice(0, 10)}) — owner.themuselab.kr 로그인 후 입력`;
+    if (HIDE_CODE) { await discord(line); console.log('🔑 인증코드 발급됨 — 디스코드에서 확인하세요(공개 로그에는 남기지 않음)'); }
+    else console.log(line.replace(/\*\*/g, ''));
+  }
+  await discord(`🤝 ${r.name} ${verb}${cmd === 'add' ? ' — 앱에 파트너 핀·배지·빈자리 알림이 켜져요(상세 사진은 1시간 안에 갱신)' : ''}`);
+} else {
+  console.log('사용법: node scripts/partner.mjs add <링크|ID> [--code] | remove <링크|ID> | list');
+  process.exit(1);
+}

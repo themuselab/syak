@@ -1,0 +1,42 @@
+name: partner
+
+# 파트너샵 등록·해제·목록 — 관리자 페이지 없이 팀이 버튼으로(Actions → partner → Run workflow).
+# 이 레포는 공개라 실행 로그도 공개 → 사장님 인증코드는 로그가 아니라 디스코드로만 보낸다(HIDE_CODE).
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "할 일"
+        type: choice
+        options: [add, remove, list]
+        default: add
+      place:
+        description: "네이버 플레이스 링크 또는 숫자 ID (list면 비워두기)"
+        required: false
+      issue_code:
+        description: "사장님 인증코드도 발급 (디스코드로 전송)"
+        type: boolean
+        default: false
+
+jobs:
+  partner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: 파트너샵 ${{ github.event.inputs.action }}
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          HIDE_CODE: "1"
+          ACTION: ${{ github.event.inputs.action }}
+          PLACE: ${{ github.event.inputs.place }}
+          ISSUE_CODE: ${{ github.event.inputs.issue_code }}
+        run: |
+          if [ "$ACTION" = "list" ]; then node scripts/partner.mjs list; exit; fi
+          if [ "$ISSUE_CODE" = "true" ]; then node scripts/partner.mjs "$ACTION" "$PLACE" --code
+          else node scripts/partner.mjs "$ACTION" "$PLACE"; fi
