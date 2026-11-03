@@ -98,6 +98,7 @@ async def sync_one(page, shop):
     name = shop.get("name") or ""
     gu = shop.get("gu") or ""
     cat = shop.get("category") or "네일"
+    cats = [c for c in (shop.get("categories") or []) if c] or [cat]  # 여러 업종(메이크업+속눈썹 등) 유지
     apollo, err = await fetch_detail(page, sid)
     if apollo is None:
         print(f"  ❌ {name}: 상세 로드 실패 {err}", flush=True)
@@ -127,7 +128,7 @@ async def sync_one(page, shop):
                                 "isOrderAvailable": True}]
         det["reservable"] = True
 
-    rec = {"id": sid, "name": det.get("name_detail") or name, "categories": [cat], "gus": [gu],
+    rec = {"id": sid, "name": det.get("name_detail") or name, "categories": cats, "gus": [gu],
            "x": det.get("x"), "y": det.get("y"), "imageUrl": det.get("repImage"),
            "hasBooking": bool(det.get("bookingItems")), "visitorReviewCount": det.get("visitorReviewsTotal"),
            **det, "_enriched": True}
