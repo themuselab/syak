@@ -6,12 +6,12 @@ DB에서 is_partner=true 로 켜면, 아직 sync 안 된 가게(partner_synced_a
 
 env: SUPABASE_URL, SUPABASE_SECRET_KEY  (Actions Secrets / 로컬은 같은 폴더 .env)
 """
-import asyncio, json, os, re, sys, urllib.request, urllib.error
+import asyncio, json, os, re, sys, traceback, urllib.request, urllib.error
 from datetime import datetime, timezone
 from pathlib import Path
 from playwright.async_api import async_playwright
 from enrich_details import fetch_detail, extract_detail, fetch_reviews
-from build_read_model import build_summary, build_detail
+from build_read_model import build_summary, build_detail, to_int
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -38,7 +38,7 @@ NOISE = re.compile(r"제거|오프|off|리무브|리페어|음료|추가|옵션|
 def rep_price(menus):
     cands = []
     for m in (menus or []):
-        p = m.get("price")
+        p = to_int(m.get("price"))  # 네이버가 "30,000" 같은 문자열로 줄 때가 있음
         nm = m.get("name") or ""
         if not p or p < 5000 or p > 2000000:
             continue
@@ -173,7 +173,8 @@ async def main():
                 if await sync_one(page, shop):
                     ok += 1
             except Exception as ex:
-                print(f"  ⚠️ {shop.get('name')}: {ex}", flush=True)
+                print(f"  ⚠️ {shop.get('name')}: {ex!r}", flush=True)
+                traceback.print_exc()
         await b.close()
     print(f"✅ 완료: {ok}/{len(partners)}곳 갱신")
 
