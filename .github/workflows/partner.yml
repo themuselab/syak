@@ -13,6 +13,9 @@ on:
       place:
         description: "네이버 플레이스 링크 또는 숫자 ID (list면 비워두기)"
         required: false
+      name:
+        description: "매장 이름 (새 매장인데 네이버 조회가 안 될 때만 필요)"
+        required: false
       issue_code:
         description: "사장님 인증코드도 발급 (디스코드로 전송)"
         type: boolean
@@ -36,7 +39,10 @@ jobs:
           ACTION: ${{ github.event.inputs.action }}
           PLACE: ${{ github.event.inputs.place }}
           ISSUE_CODE: ${{ github.event.inputs.issue_code }}
+          NAME: ${{ github.event.inputs.name }}
         run: |
           if [ "$ACTION" = "list" ]; then node scripts/partner.mjs list; exit; fi
-          if [ "$ISSUE_CODE" = "true" ]; then node scripts/partner.mjs "$ACTION" "$PLACE" --code
-          else node scripts/partner.mjs "$ACTION" "$PLACE"; fi
+          set -- "$ACTION" "$PLACE"
+          if [ "$ISSUE_CODE" = "true" ]; then set -- "$@" --code; fi
+          if [ -n "$NAME" ]; then set -- "$@" "--name=$NAME"; fi
+          node scripts/partner.mjs "$@"

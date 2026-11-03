@@ -2,7 +2,9 @@
 /**
  * 파트너샵 등록·해제·목록 — 관리자 페이지 없이 팀이 직접 쓴다(백엔드 POST/GET /internal/partners).
  *
- *   node scripts/partner.mjs add <네이버 플레이스 링크|ID> [--code]   등록 (+ 사장님 인증코드 발급)
+ *   node scripts/partner.mjs add <네이버 플레이스 링크|ID> [--code] [--name=이름] [--address=주소] [--category=네일]
+ *                                                                     등록 (+ 사장님 인증코드 발급)
+ *     DB에 없는 매장인데 네이버 요약 조회가 막히면 --name(필수)·--address로 만든다 — 사진·메뉴·좌표는 sync_partners가 채움.
  *   node scripts/partner.mjs remove <링크|ID>                        해제
  *   node scripts/partner.mjs list                                     목록
  *
@@ -18,6 +20,7 @@ if (!BASE || !KEY) { console.error('❌ API_BASE_URL / INTERNAL_API_KEY 필요')
 
 const [cmd, place, ...rest] = process.argv.slice(2);
 const wantCode = rest.includes('--code');
+const opt = (k) => rest.find((a) => a.startsWith(`--${k}=`))?.slice(k.length + 3).trim() || undefined;
 const api = async (method, path, body) => {
   const r = await fetch(`${BASE}${path}`, {
     method, headers: { 'X-Internal-Key': KEY, 'Content-Type': 'application/json' },
@@ -39,7 +42,10 @@ if (cmd === 'list') {
   for (const p of partners) console.log(`- ${p.name} (${p.gu || '-'}) · id ${p.id} · 사장님 ${p.owners} · 30일 빈자리 ${p.owner_slots_30d}`);
 } else if (cmd === 'add' || cmd === 'remove') {
   if (!place) throw new Error('네이버 플레이스 링크나 ID를 넣어주세요');
-  const r = await api('POST', '/internal/partners', { place, partner: cmd === 'add', issueCode: cmd === 'add' && wantCode });
+  const r = await api('POST', '/internal/partners', {
+    place, partner: cmd === 'add', issueCode: cmd === 'add' && wantCode,
+    name: opt('name'), address: opt('address'), category: opt('category'),
+  });
   const verb = cmd === 'add' ? (r.created ? '새로 만들고 파트너 등록' : '파트너 등록') : '파트너 해제';
   console.log(`✅ ${r.name} (id ${r.shopId}) ${verb}`);
   if (r.code) {
