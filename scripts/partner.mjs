@@ -24,19 +24,21 @@ const api = async (method, path, body) => {
     body: body ? JSON.stringify(body) : undefined,
   });
   const json = await r.json().catch(() => ({}));
-  if (!r.ok) { console.error(`❌ ${r.status} ${json.code ?? ''} ${json.message ?? ''}`, json.details ?? ''); process.exit(1); }
+  // process.exit는 Windows에서 진행 중인 fetch 핸들과 겹쳐 libuv assertion으로 죽는다 → 던지고 맨 아래에서 처리
+  if (!r.ok) throw new Error(`${r.status} ${json.code ?? ''} ${json.message ?? ''} ${json.details ? JSON.stringify(json.details) : ''}`);
   return json;
 };
 const discord = (content) => WEBHOOK
   ? fetch(WEBHOOK, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: '샥 파트너', content }) })
   : Promise.resolve();
 
+try {
 if (cmd === 'list') {
   const { partners } = await api('GET', '/internal/partners');
   console.log(`파트너샵 ${partners.length}곳`);
   for (const p of partners) console.log(`- ${p.name} (${p.gu || '-'}) · id ${p.id} · 사장님 ${p.owners} · 30일 빈자리 ${p.owner_slots_30d}`);
 } else if (cmd === 'add' || cmd === 'remove') {
-  if (!place) { console.error('❌ 네이버 플레이스 링크나 ID를 넣어주세요'); process.exit(1); }
+  if (!place) throw new Error('네이버 플레이스 링크나 ID를 넣어주세요');
   const r = await api('POST', '/internal/partners', { place, partner: cmd === 'add', issueCode: cmd === 'add' && wantCode });
   const verb = cmd === 'add' ? (r.created ? '새로 만들고 파트너 등록' : '파트너 등록') : '파트너 해제';
   console.log(`✅ ${r.name} (id ${r.shopId}) ${verb}`);
@@ -48,5 +50,9 @@ if (cmd === 'list') {
   await discord(`🤝 ${r.name} ${verb}${cmd === 'add' ? ' — 앱에 파트너 핀·배지·빈자리 알림이 켜져요(상세 사진은 1시간 안에 갱신)' : ''}`);
 } else {
   console.log('사용법: node scripts/partner.mjs add <링크|ID> [--code] | remove <링크|ID> | list');
-  process.exit(1);
+  process.exitCode = 1;
+}
+} catch (e) {
+  console.error(`❌ ${e.message}`);
+  process.exitCode = 1;
 }
