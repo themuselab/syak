@@ -59,6 +59,7 @@ const embeds = [
     title: '🤝 파트너 현황',
     color: 0x10b981,
     fields: [
+      { name: '🤝 등록된 파트너샵', value: `${n(p.partnerShops)}곳 (앱에 파트너 핀·배지·빈자리 알림)`, inline: false },
       { name: '✅ 활성 파트너샵', value: `${n(p.activePartners)}곳 (샵 연결 + 최근 30일 빈자리 등록)`, inline: false },
       { name: '🎉 실제 예약 완료', value: `${n(p.ownerSlots?.reserved)}건 (사장님 '예약 성사' 표시 기준)`, inline: false },
       { name: '사장님 계정', value: `총 ${n(p.owners)}명 · 샵 연결 ${n(p.linked)}명`, inline: true },
