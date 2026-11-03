@@ -6,7 +6,7 @@
  *                                                                     등록 (+ 사장님 인증코드 발급)
  *     DB에 없는 매장인데 네이버 요약 조회가 막히면 --name(필수)·--address로 만든다 — 사진·메뉴·좌표는 sync_partners가 채움.
  *   node scripts/partner.mjs remove <링크|ID>                        해제
- *   node scripts/partner.mjs list                                     목록
+ *   node scripts/partner.mjs list [--menus]                           목록 (+ 메뉴로 업종 확인, 조회수 안 남음)
  *
  * env: API_BASE_URL, INTERNAL_API_KEY. 선택: DISCORD_WEBHOOK(+ HIDE_CODE=1이면 인증코드를 화면 대신 디코로만 —
  * 공개 레포 Actions 로그에 코드가 남지 않게 partner.yml이 이렇게 쓴다).
@@ -39,7 +39,12 @@ try {
 if (cmd === 'list') {
   const { partners } = await api('GET', '/internal/partners');
   console.log(`파트너샵 ${partners.length}곳`);
-  for (const p of partners) console.log(`- ${p.name} (${p.gu || '-'}) · id ${p.id} · 사장님 ${p.owners} · 30일 빈자리 ${p.owner_slots_30d}`);
+  const full = rest.includes('--menus') || place === '--menus';
+  for (const p of partners) {
+    console.log(`- ${p.name} (${p.gu || '-'}) · id ${p.id} · 업종 ${(p.categories || []).join(',') || '-'}`
+      + `${p.has_coord ? '' : ' · ⚠️좌표없음'} · 사장님 ${p.owners} · 30일 빈자리 ${p.owner_slots_30d}`);
+    if (full) console.log(`    메뉴: ${(p.menus || []).slice(0, 10).join(' / ') || '(아직 동기화 전)'}`);
+  }
 } else if (cmd === 'add' || cmd === 'remove') {
   if (!place) throw new Error('네이버 플레이스 링크나 ID를 넣어주세요');
   const r = await api('POST', '/internal/partners', {
