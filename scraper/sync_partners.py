@@ -86,7 +86,8 @@ async def fetch_photos(page, sid, scrolls=5):
         if isinstance(v, dict):
             for key in ("imageUrl", "url", "thumbnailUrl", "originUrl", "originalUrl"):
                 u = v.get(key)
-                if isinstance(u, str) and "pstatic.net" in u and u.startswith("http"):
+                # maps-cms = 네이버 지도 프로모션 배너("예약하세요"·"간편청구") — 매장 사진 아님
+                if isinstance(u, str) and "pstatic.net" in u and u.startswith("http") and "maps-cms" not in u:
                     uu = u.split("?")[0]
                     if uu not in urls:
                         urls.append(uu)
