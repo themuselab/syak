@@ -43,6 +43,7 @@ if (cmd === 'list') {
   for (const p of partners) {
     console.log(`- ${p.name} (${p.gu || '-'}) · id ${p.id} · 업종 ${(p.categories || []).join(',') || '-'}`
       + `${p.has_coord ? '' : ' · ⚠️좌표없음'} · 사장님 ${p.owners} · 30일 빈자리 ${p.owner_slots_30d}`);
+    if (full) console.log(`    주소: ${p.road || '-'}`);
     if (full) console.log(`    메뉴: ${(p.menus || []).slice(0, 10).join(' / ') || '(아직 동기화 전)'}`);
   }
 } else if (cmd === 'add' || cmd === 'remove') {
