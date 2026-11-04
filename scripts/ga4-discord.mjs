@@ -70,11 +70,31 @@ async function top(dimension, metricName, { start, end = 'today', event, limit =
 
 const YtoD = { start: 'yesterday', end: 'yesterday' };
 
+// 유입 채널: GA4 기본 채널 그룹은 스레드 링크(l.threads.com)·인스타 텍스트 게시물(ig_text_post_permalink)을
+// 'Referral'(추천 링크)로 분류해 소셜이 과소집계된다 → 채널 그룹 × 소스로 받아 소셜 소스는 소셜로 다시 묶는다.
+const SOCIAL_SRC = /(^|\.)(threads\.(com|net)|instagram\.com|facebook\.com|fb\.com|t\.co|x\.com|twitter\.com|youtube\.com|tiktok\.com|kakao)|^(threads|ig|instagram|fb|facebook|ig_text_post_permalink)$/i;
+async function channels({ start, end = 'today' }) {
+  const [res] = await runReport({
+    property: PROPERTY,
+    dateRanges: [{ startDate: start, endDate: end }],
+    dimensions: [{ name: 'sessionDefaultChannelGroup' }, { name: 'sessionSource' }],
+    metrics: [{ name: 'sessions' }],
+    orderBys: [{ metric: { metricName: 'sessions' }, desc: true }],
+    limit: 200,
+  });
+  return (res.rows ?? []).map(r => {
+    const group = r.dimensionValues?.[0]?.value ?? '';
+    const src = r.dimensionValues?.[1]?.value ?? '';
+    const key = /Social/.test(group) || (group === 'Referral' && SOCIAL_SRC.test(src)) ? 'Organic Social' : group;
+    return { key, value: num(r.metricValues?.[0]?.value) };
+  });
+}
+
 const [
   yUsers, ySessions, yReserve, yViews, yDwell,
   w7Users, w7Reserve,
   m30Users, m30Reserve, m30Views,
-  topShops, acq,
+  topShops, acq, yAcq,
   ySeoLand, ySeoCta, w7SeoLand, w7SeoCta, topSeoPages,
   yAppClick, w7AppClick, appByPlacement,
   w7OwnerUsers, w7OwnerFromSeo, w7OwnerCta, w7OwnerInquiry, ownerPages,
@@ -91,7 +111,8 @@ const [
   metric('eventCount', { start: '30daysAgo', event: 'shop_view' }),
   top('customEvent:shop_id', 'eventCount', { start: '7daysAgo', event: 'shop_view', limit: 5 }),
   // 채널 그룹(Direct/Organic Social/Referral…)이 날것 소스보다 읽기 좋음. 노이즈는 아래서 정리
-  top('sessionDefaultChannelGroup', 'sessions', { start: '7daysAgo', limit: 8 }),
+  channels({ start: '7daysAgo' }),
+  channels(YtoD),
   // SEO 유입 퍼널 (지역 랜딩 페이지)
   metric('eventCount', { ...YtoD, event: 'seo_landing' }),
   metric('eventCount', { ...YtoD, event: 'seo_cta_click' }),
@@ -136,15 +157,19 @@ const CHANNEL_KR = {
   'Organic Search': '검색', 'Paid Social': '소셜 광고', 'Paid Search': '검색 광고',
   'Unassigned': '미확인', '(not set)': '미확인', '(data not available)': '미확인',
 };
-const acqMap = new Map();
-for (const a of acq) {
-  const label = CHANNEL_KR[a.key] ?? a.key;
-  acqMap.set(label, (acqMap.get(label) ?? 0) + a.value);
-}
-const acqSorted = [...acqMap.entries()].sort((x, y) => y[1] - x[1]).slice(0, 5);
+const acqTop = (rows) => {
+  const m = new Map();
+  for (const a of rows) {
+    const label = CHANNEL_KR[a.key] ?? a.key;
+    m.set(label, (m.get(label) ?? 0) + a.value);
+  }
+  return [...m.entries()].sort((x, y) => y[1] - x[1]).slice(0, 5);
+};
+const acqSorted = acqTop(acq);
 const acqLines = acqSorted.length
   ? acqSorted.map(([k, v]) => `${k} — ${v.toLocaleString()}`).join('\n')
   : '데이터 없음';
+const yAcqLine = acqTop(yAcq).map(([k, v]) => `${k} ${v.toLocaleString()}`).join(' · ') || '데이터 없음';
 
 // 파트너샵(온보딩 샵) 조회·예약클릭 — 백엔드 internal API (RDS 파트너 집합 × GA4)
 let partner = null;
@@ -220,7 +245,8 @@ const embed = {
     seoField,
     appField,
     ownerField,
-    { name: '유입 채널 Top5 (7일, 세션)', value: acqLines, inline: false },
+    { name: '유입 채널 (어제, 세션)', value: yAcqLine, inline: false },
+    { name: '유입 채널 Top5 (7일, 세션)', value: `${acqLines}\n※ 스레드·인스타 링크 유입은 소셜로 합산`, inline: false },
     ...partnerField,
   ],
   timestamp: new Date().toISOString(),
@@ -229,7 +255,8 @@ const embed = {
 
 console.log(`GA4: 어제 활성 ${yUsers} · 30일 MAU ${m30Users} · 예약클릭(30일) ${m30Reserve}`);
 
-console.log(`유입 채널(7일):
+console.log(`유입 채널(어제): ${yAcqLine}
+유입 채널(7일):
 ${acqLines}
 ${seoField.value}
 ${appField.value}
