@@ -100,6 +100,13 @@ def load_targets():
         out = [r for r in out if zlib.crc32(str(r["id"]).encode()) % NUM_SHARDS == SHARD]
     # 순서를 섞는다 — 예산이 모자라도 매번 같은 샵만 빠지지 않게(slot_ingest와 같은 이유)
     random.shuffle(out)
+    # 샥 파트너샵은 매번 맨 앞에 — 3.3만 곳을 무작위로 나눠 돌면 새 파트너는 며칠씩 이벤트가 비어 있었다
+    try:
+        partners = {str(p["id"]) for p in api("GET", "/internal/partners").get("partners", [])}
+    except Exception as ex:
+        print(f"⚠️ 파트너 목록 조회 실패(순서만 영향): {ex}", flush=True)
+        partners = set()
+    out.sort(key=lambda r: str(r["id"]) not in partners)  # 안정 정렬: 파트너 먼저, 나머지는 섞인 순서 유지
     return out
 
 
