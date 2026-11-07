@@ -127,7 +127,7 @@ const [
   hostMetric('activeUsers', 'owner.themuselab.kr', { start: '7daysAgo' }),
   metric('eventCount', { start: '7daysAgo', event: 'seo_owner_click' }),
   hostMetric('eventCount', 'owner.themuselab.kr', { start: '7daysAgo', event: 'owner_cta_click' }),
-  hostMetric('eventCount', 'owner.themuselab.kr', { start: '7daysAgo', event: 'owner_inquiry_submit' }),
+  hostMetric('eventCount', 'owner.themuselab.kr', { start: '7daysAgo', event: 'owner_inquiry_open' }), // 도입 문의는 구글폼(2026-11) — 제출은 디코 알림으로, GA엔 폼 열기만
   top('pagePath', 'eventCount', { start: '7daysAgo', event: 'owner_landing', limit: 5 }),
 ]);
 
@@ -228,7 +228,7 @@ const ownerField = {
   name: '🧑‍💼 사장님 유입 (7일)',
   value: `사장님 사이트 방문 ${w7OwnerUsers.toLocaleString()}명 · 손님 지역페이지→사장님 가이드 클릭 ${w7OwnerFromSeo.toLocaleString()}`
        + `
-시작·문의 버튼 ${w7OwnerCta.toLocaleString()} · 도입 문의 제출 ${w7OwnerInquiry.toLocaleString()}`
+시작·문의 버튼 ${w7OwnerCta.toLocaleString()} · 문의 폼 열기 ${w7OwnerInquiry.toLocaleString()}(제출은 디코 알림)`
        + (ownerPages.length ? `
 가이드 조회: ${ownerPages.map(p => `${p.key} ${p.value}`).join(' · ')}` : ''),
   inline: false,
