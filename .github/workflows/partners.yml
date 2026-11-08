@@ -2,17 +2,45 @@ name: partner-sync
 
 on:
   schedule:
-    - cron: "15 * * * *" # 매시 15분 — 새 파트너 감지해 데이터 새로고침
-  workflow_dispatch: {} # 수동 즉시 실행
+    - cron: "3-58/5 * * * *"
+    - cron: "11 * * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        options: [fast, details]
+        default: fast
 
-concurrency:
-  group: partner-sync
-  cancel-in-progress: true
+permissions:
+  contents: read
 
 jobs:
-  sync:
+  fast:
+    if: github.event.schedule != '11 * * * *' && github.event.inputs.mode != 'details'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    concurrency:
+      group: partner-refresh-fast
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Refresh live partners (slots, due events)
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
+          PARTNER_BUDGET_SEC: "210"
+        run: python scraper/partner_refresh.py
+
+  details:
+    if: github.event.schedule == '11 * * * *' || github.event.inputs.mode == 'details'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    concurrency:
+      group: partner-refresh-details
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -26,4 +54,5 @@ jobs:
         env:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
-        run: python scraper/sync_partners.py
+          PARTNER_BUDGET_SEC: "600"
+        run: python scraper/partner_refresh.py details
