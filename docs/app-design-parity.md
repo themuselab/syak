@@ -27,4 +27,6 @@
 
 검증 완료: 가격 필터 3개·analytics 8개 통과, TypeScript 통과, lint 오류 0(기존 경고 1개), 웹/Toss 빌드 통과. Chrome 360×800·390×844·1280×900에서 상세 탭·필터 적용·고정 하단·가로 넘침을 확인했다. SDK 인증 실패 시에도 검색·목록·필터가 유지되도록 인증 실패 콜백과 지도 오류 경계를 추가했다.
 
-Vercel 운영 빌드: `dpl_G5wh3azgK2tQ8ctbHZniX2raRs1V`.
+초기 디자인 운영 빌드: `dpl_G5wh3azgK2tQ8ctbHZniX2raRs1V`. 원격의 매장 바로가기(`?shop=<id>`) 변경을 함께 병합했고, 직접 진입과 상세를 닫을 때 다른 지역 쿼리가 유지되는 동작을 추가 검증했다.
+
+최종 병합 운영 빌드: `dpl_9enq557ruvmcUQ4MDvMJwie3zHvt` → `www.themuselab.kr`.
