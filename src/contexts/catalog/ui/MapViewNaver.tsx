@@ -25,45 +25,19 @@ const ZOOM_CLOSE = 15; // center 지정 시(가까이)
 const ZOOM_CITY = 14; // 기본(서울 시 전체)
 const CLUSTER_MAX_ZOOM = 14; // 이 줌 이상이면 클러스터 해제하고 개별 마커 노출
 
-// ── 핀 비주얼 — 소비자 앱과 같은 PNG 핀 (app/assets/icons/*, app/src/screens/home/components/HomeMap.web.tsx) ──
-// 앱 규칙: default(분홍 상점) = 일반 샵 / discount(노랑 %) = 이벤트 / reservable(파랑 시계) = 당일 예약 모드
-//          선택 = pin-focused(진한 테두리 큰 핀). 크기도 앱과 동일(핀 24×30, 포커스 48×48, 내 위치 32×32).
+// Assets and dimensions mirror app HomeMap.tsx / HomeMap.web.tsx.
 const ASSET = `${import.meta.env.BASE_URL}map/`;
-const PIN = {
-  partner: `${ASSET}pin-partner.png`,
-  default: `${ASSET}pin-default.png`,
-  discount: `${ASSET}pin-discount.png`,
-  reservable: `${ASSET}pin-reservable.png`,
-  focused: `${ASSET}pin-focused.png`,
-  myLocation: `${ASSET}marker-my-location.png`,
-};
-const PIN_W = 24;
-const PIN_H = 30;
-const PARTNER_W = 30; // 파트너는 클러스터에서 빠지고 항상 보이므로 한 단계 크게(앱 핀과 같은 모양)
-const PARTNER_H = 37.5;
-const FOCUSED = 48;
-const FOCUSED_TIP_Y = 45; // pin-focused.png(168px)의 핀 끝 = y 158 → 48px 기준 45 (네이티브 마커 기본 앵커 = 하단 끝)
-
-// 파트너 이름 라벨 HTML — 앱 "샥 파트너" 브랜드 칩 모양(연분홍 배경 + primary-300 테두리 + primary-500 글씨).
-// 0x0 래퍼 안에 절대배치로 핀 위에 띄운다(가변 폭이라 anchor는 0,0 고정).
-function partnerLabelHtml(name: string): string {
-  const style =
-    `position:absolute;left:0;bottom:${PARTNER_H + 5}px;transform:translateX(-50%);white-space:nowrap;` +
-    `background:${color.brand.tint};border:1px solid ${color.primary[300]};color:${color.primary[500]};` +
-    `font-size:12px;font-weight:600;line-height:16px;padding:3px 9px;border-radius:999px;` +
-    `box-shadow:${shadow.sm};cursor:pointer;font-family:${FONT_FAMILY.replace(/"/g, "'")};`;
-  const esc = name.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  return `<div style="position:relative;width:0;height:0;"><div style="${style}">${esc}</div></div>`;
+const DOT_ZOOM_THRESHOLD = 13.8;
+function markerIcon(naver: NaverAny, kind: string, focused: boolean, dot: boolean): NaverAny {
+  const partner = kind === "partner";
+  const file = partner ? focused ? "pin-partner-focused" : "pin-partner"
+    : focused ? `pin-${kind}` : dot ? `dot-${kind}`
+    : kind === "default" ? "marker-shop" : `marker-shop-${kind}`;
+  const [w, h] = partner && focused ? [30, 37] : partner || focused ? [27, 34] : dot ? [12, 12] : [20, 20];
+  return imgIcon(naver, `${ASSET}${file}.png`, w, h, w === h ? h / 2 : h);
 }
-
-// 이미지 아이콘 옵션 — anchor는 이미지 하단 중앙(카카오 MarkerImage 기본과 동일).
 function imgIcon(naver: NaverAny, url: string, w: number, h: number, anchorY: number = h): NaverAny {
-  return {
-    url,
-    size: new naver.maps.Size(w, h),
-    scaledSize: new naver.maps.Size(w, h),
-    anchor: new naver.maps.Point(w / 2, anchorY),
-  };
+  return { url, size: new naver.maps.Size(w, h), scaledSize: new naver.maps.Size(w, h), anchor: new naver.maps.Point(w / 2, anchorY) };
 }
 
 // ── SDK + 클러스터링 로더 (모듈 레벨 프로미스 캐시 → 다중 마운트 중복 로드 방지) ──
@@ -156,7 +130,7 @@ type Props = {
   center?: Coordinate;
   myPos?: Coordinate | null;
   showDiscount?: boolean;
-  showToday?: boolean; // '오늘 예약' 토글 ON일 때만 초록핀, 평소엔 기본(핑크) 핀
+  showToday?: boolean;
   onPinClick: (shop: ShopPin) => void;
   onBoundsChanged?: (b: Bounds) => void;
 };
@@ -166,11 +140,12 @@ export function MapViewNaver({ shops, highlightedId, center, myPos, showToday = 
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [mapState, setMapState] = useState<NaverAny>(null);
+  const [isDotZoom, setIsDotZoom] = useState(false);
   const mapRef = useRef<NaverAny>(null);
   const clusteringRef = useRef<NaverAny>(null);
   const iconsRef = useRef<Record<string, NaverAny>>({}); // 공유 아이콘 옵션
   const markersById = useRef<Record<string, NaverAny>>({}); // 일반 마커(클러스터 대상, map:null)
-  const partnerById = useRef<Record<string, { marker: NaverAny; label: NaverAny }>>({}); // 파트너(직접 표시)
+  const partnerById = useRef<Record<string, { marker: NaverAny }>>({}); // 파트너(직접 표시)
   const myDotRef = useRef<NaverAny>(null);
 
   // 최신 콜백을 리스너에서 참조 (재바인딩 없이)
@@ -189,12 +164,7 @@ export function MapViewNaver({ shops, highlightedId, center, myPos, showToday = 
 
     // 공유 아이콘 옵션 미리 생성
     const icons = iconsRef.current;
-    icons["__default__"] = imgIcon(naver, PIN.default, PIN_W, PIN_H);
-    icons["__event__"] = imgIcon(naver, PIN.discount, PIN_W, PIN_H);
-    icons["__partner__"] = imgIcon(naver, PIN.partner, PARTNER_W, PARTNER_H);
-    icons["__today__"] = imgIcon(naver, PIN.reservable, PIN_W, PIN_H);
-    icons["__focused__"] = imgIcon(naver, PIN.focused, FOCUSED, FOCUSED, FOCUSED_TIP_Y);
-    icons["__mydot__"] = imgIcon(naver, PIN.myLocation, 32, 32, 16); // 점형 = 중앙 앵커(앱과 동일)
+    icons["__mydot__"] = imgIcon(naver, `${ASSET}marker-my-location.png`, 32, 32, 16);
 
     const startCenter = center ?? { lat: 37.4979, lng: 127.0276 };
     const map = new naver.maps.Map(el, {
@@ -246,7 +216,7 @@ export function MapViewNaver({ shops, highlightedId, center, myPos, showToday = 
       markersById.current = {};
       Object.values(partnerById.current).forEach((p) => {
         detach(p.marker);
-        detach(p.label);
+
       });
       partnerById.current = {};
       detach(myDotRef.current);
@@ -264,6 +234,7 @@ export function MapViewNaver({ shops, highlightedId, center, myPos, showToday = 
     const map = mapState;
     if (!map || !naver?.maps) return;
     const emit = () => {
+      setIsDotZoom(map.getZoom() < DOT_ZOOM_THRESHOLD);
       const b = map.getBounds();
       const sw = b.getSW();
       const ne = b.getNE();
@@ -274,142 +245,57 @@ export function MapViewNaver({ shops, highlightedId, center, myPos, showToday = 
     return () => { try { naver.maps.Event.removeListener(listener); } catch { /* SDK invalidated */ } };
   }, [mapState]);
 
-  // 마커 diff — shops 바뀌면 사라진 것만 제거 + 새것만 추가 (전체 재생성 X → pan 렉 해결)
+  // One synchronization path keeps selection stable while data and zoom change.
   useEffect(() => {
     const naver = (window as NaverAny).naver;
     const map = mapState;
     const clustering = clusteringRef.current;
     if (!map || !clustering || !naver?.maps) return;
-    const icons = iconsRef.current;
-    const byId = markersById.current;
-    const pById = partnerById.current;
-
-    const regIcon = (s: ShopPin) => {
-      const green = showToday && s.todayOpen; // 토글 ON일 때만 초록
-      return green ? icons["__today__"] : (showDiscount && s.hasEvent) ? icons["__event__"] : icons["__default__"];
-    };
-    const regZ = (s: ShopPin) => (showToday && s.todayOpen ? 7 : (showDiscount && s.hasEvent) ? 6 : 3);
-
-    // 클러스터에 현재 마커 집합 반영 후 재생성. (vendored lib의 KVO는 'markers' 변경 시
-    // 자동 redraw를 트리거하지 않으므로 직접 _redraw 호출; 실패해도 다음 idle에서 갱신됨)
-    const syncCluster = () => {
-      clustering.setMarkers(Object.values(byId));
-      try {
-        if (typeof clustering._redraw === "function") clustering._redraw();
-      } catch {
-        /* projection 미준비 등 — 다음 idle 이벤트에서 자동 재생성 */
-      }
-    };
-
-    const all = shops.filter((s) => s.coord?.lat && s.coord?.lng);
-    const regIds = new Set<string>();
-    const parIds = new Set<string>();
-    for (const s of all) (s.isPartner ? parIds : regIds).add(s.id);
-
-    // 사라진 일반 마커 제거
-    let regChanged = false;
-    for (const id of Object.keys(byId)) {
-      if (!regIds.has(id)) {
-        byId[id].setMap(null);
-        delete byId[id];
-        regChanged = true;
-      }
+    const regular = markersById.current;
+    const partners = partnerById.current;
+    const valid = shops.filter(s => s.coord && Number.isFinite(s.coord.lat) && Number.isFinite(s.coord.lng));
+    const regularIds = new Set(valid.filter(s => !s.isPartner).map(s => s.id));
+    const partnerIds = new Set(valid.filter(s => s.isPartner).map(s => s.id));
+    for (const id of Object.keys(regular)) {
+      if (!regularIds.has(id)) { regular[id].setMap(null); delete regular[id]; }
     }
-
-    // 사라진 파트너 제거
-    for (const id of Object.keys(pById)) {
-      if (!parIds.has(id)) {
-        pById[id].marker.setMap(null);
-        pById[id].label.setMap(null);
-        delete pById[id];
-      }
+    for (const id of Object.keys(partners)) {
+      if (!partnerIds.has(id)) { partners[id].marker.setMap(null); delete partners[id]; }
     }
-
-    // 새 파트너 추가 (직접 표시 + 이름 라벨) — 클러스터 제외, 항상 보임
-    for (const s of all) {
-      if (!s.isPartner || pById[s.id]) continue;
-      const pos = new naver.maps.LatLng(s.coord.lat, s.coord.lng);
-      const marker = new naver.maps.Marker({ position: pos, map, icon: icons["__partner__"], zIndex: 9, title: s.name });
-      naver.maps.Event.addListener(marker, "click", () => onClickRef.current(s));
-      const label = new naver.maps.Marker({
-        position: pos,
-        map,
-        zIndex: 11,
-        icon: { content: partnerLabelHtml(s.name), anchor: new naver.maps.Point(0, 0) },
-      });
-      naver.maps.Event.addListener(label, "click", () => onClickRef.current(s));
-      pById[s.id] = { marker, label };
-    }
-
-    // 새 일반 마커만 배치 추가 (1,500개씩 프레임 분할)
-    const toAdd = all.filter((s) => !s.isPartner && !byId[s.id]);
-    if (regChanged && toAdd.length === 0) syncCluster();
-
     let cancelled = false;
-    let i = 0;
-    const BATCH = 1500;
+    let index = 0;
     const step = () => {
       if (cancelled) return;
-      const slice = toAdd.slice(i, i + BATCH);
-      for (const s of slice) {
-        const marker = new naver.maps.Marker({
-          position: new naver.maps.LatLng(s.coord.lat, s.coord.lng),
-          icon: regIcon(s), // map 미지정 → 클러스터러가 표시/숨김 관리
-          title: s.name,
-          zIndex: regZ(s),
-        });
-        naver.maps.Event.addListener(marker, "click", () => onClickRef.current(s));
-        byId[s.id] = marker;
+      for (const shop of valid.slice(index, index + 1500)) {
+        const focused = shop.id === highlightedId;
+        // App markerKindOf: partner wins, then active discount / same-day mode.
+        const kind = shop.isPartner ? "partner" : showDiscount ? "discount" : showToday ? "reservable" : "default";
+        let marker = shop.isPartner ? partners[shop.id]?.marker : regular[shop.id];
+        const position = new naver.maps.LatLng(shop.coord.lat, shop.coord.lng);
+        if (!marker) {
+          marker = new naver.maps.Marker({ position, title: shop.name });
+          naver.maps.Event.addListener(marker, "click", () => onClickRef.current(shop));
+          if (shop.isPartner) partners[shop.id] = { marker };
+          else regular[shop.id] = marker;
+        }
+        marker.setPosition(position);
+        marker.setIcon(markerIcon(naver, kind, focused, isDotZoom));
+        marker.setZIndex(focused ? 10 : shop.isPartner ? 5 : 1);
+        // Selected pins stay outside clusters, like the native app overlay.
+        marker.setMap(shop.isPartner || focused ? map : null);
       }
-      if (slice.length) syncCluster();
-      i += BATCH;
-      if (i < toAdd.length) requestAnimationFrame(step);
+      index += 1500;
+      if (index < valid.length) requestAnimationFrame(step);
+      else {
+        clustering.setMarkers(Object.entries(regular).filter(([id]) => id !== highlightedId).map(([, marker]) => marker));
+        try { clustering._redraw?.(); } catch { /* projection becomes ready on idle */ }
+        // Cluster teardown can hide its former member; restore selected overlay last.
+        if (highlightedId && regular[highlightedId]) regular[highlightedId].setMap(map);
+      }
     };
-    if (toAdd.length) requestAnimationFrame(step);
-
-    return () => {
-      cancelled = true;
-    };
-  }, [mapState, shops, showToday, showDiscount]);
-
-  // '오늘 예약' 토글 변화 시 기존(공유) 마커 색 즉시 갱신 — diff는 새 마커만 추가하므로 별도 동기화
-  useEffect(() => {
-    const icons = iconsRef.current;
-    if (!Object.keys(icons).length) return;
-    const byId = markersById.current;
-    for (const s of shops) {
-      const mk = byId[s.id];
-      if (!mk) continue;
-      const green = showToday && s.todayOpen;
-      mk.setIcon(green ? icons["__today__"] : (showDiscount && s.hasEvent) ? icons["__event__"] : icons["__default__"]);
-      mk.setZIndex(green ? 7 : (showDiscount && s.hasEvent) ? 6 : 3);
-    }
-  }, [showToday, showDiscount, shops]);
-
-  // 선택 핀 강조 (imperatively 아이콘 교체)
-  const prevHl = useRef<string | undefined>(undefined);
-  useEffect(() => {
-    const naver = (window as NaverAny).naver;
-    if (!naver?.maps) return;
-    const icons = iconsRef.current;
-    const mk = (id: string) => markersById.current[id] || partnerById.current[id]?.marker;
-    if (prevHl.current && mk(prevHl.current)) {
-      const prev = shops.find((x) => x.id === prevHl.current);
-      const restore =
-        (prev?.isPartner && icons["__partner__"]) ||
-        (showToday && prev?.todayOpen && icons["__today__"]) ||
-        (showDiscount && prev?.hasEvent && icons["__event__"]) ||
-        icons["__default__"];
-      mk(prevHl.current).setIcon(restore);
-      // 강조 해제 시 zIndex도 원복 (카카오판의 잠재 버그 개선)
-      mk(prevHl.current).setZIndex(prev?.isPartner ? 9 : showToday && prev?.todayOpen ? 7 : prev?.hasEvent ? 6 : 3);
-    }
-    if (highlightedId && mk(highlightedId)) {
-      mk(highlightedId).setIcon(icons["__focused__"]); // 앱과 동일: 선택 핀 = pin-focused
-      mk(highlightedId).setZIndex(10);
-    }
-    prevHl.current = highlightedId;
-  }, [highlightedId, shops, showToday, showDiscount]);
+    step();
+    return () => { cancelled = true; };
+  }, [mapState, shops, highlightedId, showToday, showDiscount, isDotZoom]);
 
   // 내 위치 점 마커 — myPos 변화에 맞춰 생성/이동/제거
   useEffect(() => {
