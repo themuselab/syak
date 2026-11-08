@@ -198,6 +198,26 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 매장 바로가기(?shop=<네이버 플레이스 id>): 파트너샵 공유 링크 등에서 들어오면 그 매장 상세를 바로 연다.
+  // 상세 시트가 id로 직접 불러오므로 지도에 그 매장이 없어도 열린다. id는 숫자만 받는다(임의 문자열 방지).
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("shop");
+    if (id && /^\d{5,}$/.test(id)) {
+      setHighlightId(id);
+      setSelectedId(id);
+      usecases.analytics.track({ event: "card_click", source: "link", shopId: id });
+    }
+  }, []);
+  function closeDetail() {
+    setSelectedId(null);
+    // 닫으면 주소에서 ?shop=을 지워 새로고침 때 다시 열리지 않게 한다(다른 쿼리는 유지)
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("shop")) {
+      url.searchParams.delete("shop");
+      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    }
+  }
+
   const q = query.trim();
 
   // 이름 검색 (서버측, 디바운스). 비우면 다시 지도 영역 모드로.
@@ -442,7 +462,7 @@ export default function App() {
           <ShopDetailSheet
             key={selectedId}
             shopId={selectedId}
-            onClose={() => setSelectedId(null)}
+            onClose={closeDetail}
             onReserveClick={(shopId, route, meta) => usecases.analytics.track({ event: "reserve_click", shopId, isPartner: meta?.isPartner, route: route.type, slotDate: meta?.slot?.date, slotTime: meta?.slot?.time, shopDistrict: meta?.district, shopCategory: meta?.category })}
           />
         </Suspense>
