@@ -136,7 +136,8 @@ def fast():
                                 print(f"Notification failed for {shop['id']}; data committed", flush=True)
                 except Exception as exc:
                     errors += 1
-                    print(f"Preserved {shop['id']} {kind}: {type(exc).__name__}", flush=True)
+                    reason = str(exc)[:120] if isinstance(exc, ValueError) else str(getattr(exc, 'code', ''))
+                    print(f"Preserved {shop['id']} {kind}: {type(exc).__name__} {reason}", flush=True)
                 time.sleep(0.5)
     print(f"Partner refresh: updated={updated}, errors={errors}", flush=True)
     return errors
@@ -210,9 +211,9 @@ async def details():
                         if booking_items:
                             payload["items"] = booking_items
                             payload["item_ids"] = list(dict.fromkeys(i["id"] for i in booking_items))
-                        apply(shop, "details", observed, payload)
+                        result = apply(shop, "details", observed, payload)
                         del apollo, blob, model, record
-                        print(f"Details refreshed: {shop['id']}", flush=True)
+                        print(f"Details {'refreshed' if result.get('applied') else 'skipped'}: {shop['id']}", flush=True)
                     except Exception as exc:
                         errors += 1
                         print(f"Details preserved: {shop['id']} {type(exc).__name__}", flush=True)
