@@ -1,3 +1,4 @@
+import { installInteractionTracking } from "../shared/platform/analytics-delivery";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { SheetRef } from "react-modal-sheet";
 import { useCatalog } from "../contexts/catalog/ui/hooks/useCatalog";
@@ -65,6 +66,10 @@ function filterSummary(c: FilterCriteria): string {
 }
 
 export default function App() {
+  useEffect(() => installInteractionTracking((name, properties) => {
+    if (name === 'ui_interaction' || name === 'scroll_depth' || name === 'client_error')
+      usecases.analytics.track({ event: name, properties });
+  }), []);
   const { shops, pins, loading, error, filter, setFilter, loadBounds, showShops, searchByName } = useCatalog();
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
   const [nameResults, setNameResults] = useState<ShopSummary[]>([]);
@@ -159,7 +164,9 @@ export default function App() {
       /* ignore */
     }
     // 2) 실제 위치로 갱신 + 저장
+    usecases.analytics.track({ event: "location_request" });
     getUserPosition().then((pos) => {
+      usecases.analytics.track({ event: "location_result", properties: { result: pos ? "available" : "unavailable" } });
       if (pos) {
         setMyPos(pos);
         if (!hasGu) setMapCenter(pos);
@@ -279,7 +286,25 @@ export default function App() {
   }
 
   // 결과 없을 때 전체 초기화 (필터·정렬·칩·맞춤찾기·검색어)
+  useEffect(() => {
+    if (loading) return;
+    const timer = setTimeout(() => {
+      const properties = { result_count: displayed.length, search_term_length: q.length, partner_count: displayed.filter(s => s.isPartner).length };
+      usecases.analytics.track({ event: "shop_list_view", properties });
+      if (q) {
+        usecases.analytics.track({ event: "search", properties });
+        if (!displayed.length) usecases.analytics.track({ event: "search_no_result", properties });
+      }
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [loading, displayed, q]);
+  useEffect(() => { if (filterOpen) usecases.analytics.track({ event: "filter_open" }); }, [filterOpen]);
+  useEffect(() => { if (regionOpen) usecases.analytics.track({ event: "region_open" }); }, [regionOpen]);
+  useEffect(() => { if (findOpen) usecases.analytics.track({ event: "custom_find_open" }); }, [findOpen]);
+  useEffect(() => { if (error) usecases.analytics.track({ event: "service_error", properties: { stage: "catalog" } }); }, [error]);
+
   function resetAll() {
+    usecases.analytics.track({ event: "filter_reset" });
     setFilter({});
     setChip(null);
     setCustomFind(null);
@@ -287,15 +312,14 @@ export default function App() {
     if (lastBounds.current) loadBounds(lastBounds.current);
   }
 
-  function openDetail(shop: ShopPin) {
+  function openDetail(shop: ShopPin, source: "list" | "pin" = "list") {
     setHighlightId(shop.id);
     if (shop.coord?.lat && shop.coord?.lng) setMapCenter({ ...shop.coord });
     setSelectedId(shop.id);
-    usecases.analytics.track({ event: "detail_view", shopId: shop.id, shopCategory: shop.category, shopDistrict: shop.gu });
+    usecases.analytics.track({ event: source === "pin" ? "pin_click" : "card_click", source, shopId: shop.id, isPartner: shop.isPartner, shopCategory: shop.category, shopDistrict: shop.gu });
   }
   function onPinClick(shop: ShopPin) {
-    usecases.analytics.track({ event: "pin_click", shopId: shop.id, shopCategory: shop.category, shopDistrict: shop.gu });
-    openDetail(shop);
+    openDetail(shop, "pin");
   }
 
   const activeFilterCount =
@@ -448,7 +472,7 @@ export default function App() {
           <ShopDetailSheet
             shopId={selectedId}
             onClose={() => setSelectedId(null)}
-            onReserveClick={(shopId, route, meta) => usecases.analytics.track({ event: "reserve_click", shopId, route: route.type, slotDate: meta?.slot?.date, slotTime: meta?.slot?.time, shopDistrict: meta?.district, shopCategory: meta?.category })}
+            onReserveClick={(shopId, route, meta) => usecases.analytics.track({ event: "reserve_click", shopId, isPartner: meta?.isPartner, route: route.type, slotDate: meta?.slot?.date, slotTime: meta?.slot?.time, shopDistrict: meta?.district, shopCategory: meta?.category })}
           />
         </Suspense>
       )}
@@ -462,7 +486,7 @@ export default function App() {
         </Suspense>
       )}
       {regionOpen && <Suspense fallback={null}><RegionPicker selected={filter.gus ?? []} onApply={selectRegions} onClose={() => setRegionOpen(false)} /></Suspense>}
-      {findOpen && <Suspense fallback={null}><CustomFindModal onApply={setCustomFind} onClose={() => setFindOpen(false)} /></Suspense>}
+      {findOpen && <Suspense fallback={null}><CustomFindModal onApply={(value) => { setCustomFind(value); usecases.analytics.track({ event: "custom_find_apply", properties: { slot_date: value.date, time_count: value.hours.length } }); }} onClose={() => setFindOpen(false)} /></Suspense>}
     </div>
   );
 }

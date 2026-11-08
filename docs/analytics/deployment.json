@@ -1,0 +1,36 @@
+{
+  "date": "2026-11-08",
+  "web": {
+    "deployment": "dpl_CwZRHvFQi7MfYwKDoaCUj6hf753D",
+    "domain": "https://www.themuselab.kr",
+    "status": "READY"
+  },
+  "app": {
+    "deployment": "dpl_7YmECSq3rZ7QUEu9nP3L7WAfzyPq",
+    "domain": "https://app.themuselab.kr",
+    "status": "READY"
+  },
+  "verification": [
+    {
+      "repo": "web",
+      "status": 200,
+      "tracking": {
+        "shop_type": true,
+        "reservation_method": true,
+        "GTM-T6G3XFQQ": true
+      },
+      "url": "https://syak.vercel.app/"
+    },
+    {
+      "repo": "app",
+      "status": 200,
+      "tracking": {
+        "shop_type": true,
+        "reservation_method": true,
+        "GTM-T6G3XFQQ": true
+      },
+      "url": "https://app.themuselab.kr/home"
+    }
+  ],
+  "note": "Initial analytics deployment snapshot. Subsequent privacy and review-login deployments are recorded in app/docs/store-release-2026-11-08.md; source changes are included in the 2026-11-08 repository integration."
+}

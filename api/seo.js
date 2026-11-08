@@ -44,7 +44,7 @@ function deepLink(linkGu, cat, gu) {
 }
 function cta(linkGu, cat, gu, placement, cls, label) {
   const href = deepLink(linkGu, cat, gu);
-  const on = `gtag('event','seo_cta_click',{category:'${cat}',region:${JSON.stringify(gu)},region_slug:${JSON.stringify(slugOf(gu))},placement:'${placement}'})`;
+  const on = `window.syakTrack('event','seo_cta_click',{category:'${cat}',region:${JSON.stringify(gu)},region_slug:${JSON.stringify(slugOf(gu))},placement:'${placement}'})`;
   return `<a class="${cls}" href="${href}" onclick="${esc(on)}">${label}</a>`;
 }
 
@@ -56,7 +56,7 @@ function appStoreUrl(campaign) {
 // 앱 설치 유도 — 클릭은 GA4 app_install_click(store·placement·category·region)로 잡아 디코 리포트에 집계.
 // 안드로이드 기기에선 숨김(공개 스토어 링크 없음). iOS 사파리는 상단 스마트 앱 배너도 함께 뜬다.
 function appBlock(cat, region, slug, placement) {
-  const on = `gtag('event','app_install_click',{store:'ios',category:'${cat}',region:${JSON.stringify(region)},region_slug:${JSON.stringify(slug)},placement:'${placement}'})`;
+  const on = `window.syakTrack('event','app_install_click',{store:'ios',category:'${cat}',region:${JSON.stringify(region)},region_slug:${JSON.stringify(slug)},placement:'${placement}'})`;
   return `<div class="app" data-app>` +
     `<div class="app-t"><b>샥 앱으로 빈자리 알림 받기</b><span>즐겨찾은 샵에 빈자리가 생기면 바로 알려드려요</span></div>` +
     `<a class="app-b" href="${appStoreUrl(`seo-${cat}-${slug}`)}" target="_blank" rel="noopener" onclick="${esc(on)}">` +
@@ -68,7 +68,7 @@ function appBlock(cat, region, slug, placement) {
 function ownerBlock(cat, region, slug, placement) {
   const place = CATEGORIES[cat].place;
   const q = new URLSearchParams({ utm_source: "syak_web", utm_medium: "referral", utm_campaign: "seo_owner", utm_content: `${cat}-${slug}` });
-  const on = `gtag('event','seo_owner_click',{category:'${cat}',region:${JSON.stringify(region)},region_slug:${JSON.stringify(slug)},placement:'${placement}'})`;
+  const on = `window.syakTrack('event','seo_owner_click',{category:'${cat}',region:${JSON.stringify(region)},region_slug:${JSON.stringify(slug)},placement:'${placement}'})`;
   return `<a class="owner" href="https://owner.themuselab.kr/guide/${cat}/?${q}" onclick="${esc(on)}">` +
     `<b>${esc(region === "전국" ? place : `${region} ${place}`)} 사장님, 노쇼 난 자리 그냥 비워두시나요?</b>` +
     `<span>취소석 30초 등록 → ${esc(region === "전국" ? "근처" : region)}에서 ${esc(place)} 찾는 손님에게 바로 알림 →</span></a>`;
@@ -134,7 +134,7 @@ function render(cat, gu, entry, catData, nowIso, freshLabel) {
       `<ul class="car" aria-label="${esc(gu)} ${esc(place)} 매장 사진">` +
       withPhoto.map((s, i) =>
         `<li><a href="${deepLink(lg, cat, gu)}" rel="nofollow" ` +
-          `onclick="gtag('event','seo_cta_click',{category:'${cat}',region:${JSON.stringify(gu)},placement:'carousel'})">` +
+          `onclick="window.syakTrack('event','seo_cta_click',{category:'${cat}',region:${JSON.stringify(gu)},placement:'carousel'})">` +
           `<img src="${esc(s.ph)}" alt="${esc(`${gu} ${place} ${s.name}`)}" width="150" height="150"` +
           `${i < 2 ? "" : ' loading="lazy"'} decoding="async" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src='/fallback.png'">` +
           `<span class="cn">${esc(s.name)}</span>` +
@@ -156,7 +156,7 @@ function render(cat, gu, entry, catData, nowIso, freshLabel) {
     const roadLine = s.road ? `<div class="rd">📍 ${esc(s.road)}</div>` : "";
     cards.push(
       `<li class="card"><a href="${deepLink(lg, cat, gu)}" rel="nofollow" ` +
-        `onclick="gtag('event','seo_cta_click',{category:'${cat}',region:${JSON.stringify(gu)},placement:'card'})">` +
+        `onclick="window.syakTrack('event','seo_cta_click',{category:'${cat}',region:${JSON.stringify(gu)},placement:'card'})">` +
         `<div class="nm">${esc(s.name)}</div>` +
         `<div class="meta">${esc(s.tier || "")} · ${esc(price)}~${rv}</div>` +
         menuLine + roadLine +
@@ -239,10 +239,10 @@ function render(cat, gu, entry, catData, nowIso, freshLabel) {
     ? `<script type="application/ld+json">${JSON.stringify(offerLd)}</script>` : "";
 
   const gaSnippet =
-    `<script async src="https://www.googletagmanager.com/gtag/js?id=${GA_ID}"></script>` +
-    `<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}` +
+    `<script type="module" src="/assets/analytics.js"></script><script async src="https://www.googletagmanager.com/gtag/js?id=${GA_ID}"></script>` +
+    `<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)};window.syakQueue=[];window.syakTrack=function(c,n,p){if(window.syakQueue.length<128)window.syakQueue.push([n,p])};` +
     `gtag('js',new Date());gtag('config','${GA_ID}');` +
-    `gtag('event','seo_landing',{page_type:'seo_geo',category:'${cat}',` +
+    `window.syakTrack('event','seo_landing',{page_type:'seo_geo',category:'${cat}',` +
     `region:${JSON.stringify(gu)},region_slug:${JSON.stringify(sl)},shop_count:${n},today_open:${today}});</script>`;
 
   return `<!doctype html>
@@ -361,10 +361,10 @@ function renderHub(cat, catData, nowIso, freshLabel) {
     isPartOf: { "@type": "WebSite", name: "샥", url: `${SITE}/` },
   };
   const gaSnippet =
-    `<script async src="https://www.googletagmanager.com/gtag/js?id=${GA_ID}"></script>` +
-    `<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}` +
+    `<script type="module" src="/assets/analytics.js"></script><script async src="https://www.googletagmanager.com/gtag/js?id=${GA_ID}"></script>` +
+    `<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)};window.syakQueue=[];window.syakTrack=function(c,n,p){if(window.syakQueue.length<128)window.syakQueue.push([n,p])};` +
     `gtag('js',new Date());gtag('config','${GA_ID}');` +
-    `gtag('event','seo_landing',{page_type:'seo_hub',category:'${cat}',region:'전국',region_slug:'hub',shop_count:${totalShops},today_open:0});</script>`;
+    `window.syakTrack('event','seo_landing',{page_type:'seo_hub',category:'${cat}',region:'전국',region_slug:'hub',shop_count:${totalShops},today_open:0});</script>`;
   return `<!doctype html>
 <html lang="ko"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">

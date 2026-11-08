@@ -40,7 +40,7 @@ type Props = {
   onReserveClick: (
     shopId: string,
     route: ReservationRoute,
-    meta?: { slot?: { date: string; time: string }; district?: string; category?: string },
+    meta?: { isPartner: boolean; slot?: { date: string; time: string }; district?: string; category?: string },
   ) => void;
 };
 
@@ -51,6 +51,12 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
   const [todaySlots, setTodaySlots] = useState<string[] | null>(null);
   const [showAllMenus, setShowAllMenus] = useState(false);
   const [showAllReviews, setShowAllReviews] = useState(false);
+  const viewed = useRef<string | null>(null);
+  useEffect(() => {
+    if (!detail || detail.id !== shopId || viewed.current === shopId) return;
+    viewed.current = shopId;
+    usecases.analytics.track({ event: "detail_view", shopId, isPartner: detail.isPartner, shopCategory: detail.category, shopDistrict: detail.gu });
+  }, [detail, shopId]);
 
   useEffect(() => {
     let alive = true;
@@ -193,7 +199,7 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
                       href={detail.reservationRoutes.find((r) => r.type === "naver")?.value || "#"}
                       target="_blank"
                       rel="noreferrer"
-                      onClick={() => onReserveClick(detail.id, { type: "naver", label: "네이버로 예약", value: "" }, { slot: { date: todayYmd(), time: t }, district: detail.gu, category: detail.category })}
+                      onClick={() => onReserveClick(detail.id, { type: "naver", label: "네이버로 예약", value: "" }, { slot: { date: todayYmd(), time: t }, isPartner: detail.isPartner, district: detail.gu, category: detail.category })}
                       style={{ height: 36, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: radius.full, background: color.white, color: color.primary[500], fontSize: 14, fontWeight: 600, textDecoration: "none" }}
                     >
                       {t}
@@ -208,7 +214,7 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
             {slots && slots.length > 0 && (
               <SlotsCard slots={slots}
                 naverUrl={detail.reservationRoutes.find((r) => r.type === "naver")?.value}
-                onPick={(t) => onReserveClick(detail.id, { type: "naver", label: "네이버로 예약", value: "" }, { slot: { date: tomorrowYmd(), time: t }, district: detail.gu, category: detail.category })} />
+                onPick={(t) => detail.reservationRoutes.some(r => r.type === "naver" && r.value) && onReserveClick(detail.id, { type: "naver", label: "네이버로 예약", value: "" }, { slot: { date: tomorrowYmd(), time: t }, isPartner: detail.isPartner, district: detail.gu, category: detail.category })} />
             )}
 
             {/* 메뉴 · 가격 — 예약 시간 다음. 최저가가 무슨 메뉴인지 강조(필터 오해 방지) */}
@@ -287,14 +293,14 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
                   </div>
                 ))}
                 {!showAllReviews && detail.reviews.length > 2 && (
-                  <button onClick={() => setShowAllReviews(true)} style={moreBtnStyle}>리뷰 더보기</button>
+                  <button onClick={() => { setShowAllReviews(true); usecases.analytics.track({ event: "review_view", shopId, isPartner: detail.isPartner }); }} style={moreBtnStyle}>리뷰 더보기</button>
                 )}
               </Section>
             )}
           </div>
 
           {/* 예약하기 (고정 하단) */}
-          <ReserveBar routes={detail.reservationRoutes} onReserve={(r) => onReserveClick(detail.id, r, { district: detail.gu, category: detail.category })} />
+          <ReserveBar routes={detail.reservationRoutes} onReserve={(r) => onReserveClick(detail.id, r, { isPartner: detail.isPartner, district: detail.gu, category: detail.category })} />
         </>
       )}
     </div>

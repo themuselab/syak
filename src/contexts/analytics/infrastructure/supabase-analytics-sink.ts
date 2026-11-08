@@ -11,7 +11,7 @@ function sessionId(): string {
 }
 
 export class SupabaseAnalyticsSink implements AnalyticsSink {
-  constructor(private readonly platform: "toss" | "web" = "toss") {}
+  constructor(private readonly platform: "toss" | "web" = "web") {}
 
   send(event: AnalyticsEvent): void {
     try {

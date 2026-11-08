@@ -1,5 +1,6 @@
 // 백엔드(syak_BE) API 호출 헬퍼. 소비자 카탈로그/슬롯을 RDS 백엔드에서 읽는다.
 // (예전엔 Supabase REST 직접 호출 → egress 정지에 취약했음)
+import { analyticsDelivery } from './analytics-runtime';
 const API_BASE =
   (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "") ??
   "https://api.themuselab.kr/api/v1";
@@ -10,9 +11,15 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   for (let i = 0; i < tries; i++) {
     try {
       const res = await fetch(url, init);
-      if (res.status < 500 || i === tries - 1) return res;
+      if (res.status < 500 || i === tries - 1) {
+        if (!res.ok) analyticsDelivery.send('api_error', { stage: path.split('?')[0].split('/')[0], status_code: res.status, platform: import.meta.env.VITE_TARGET === 'toss' ? 'toss' : 'web' });
+        return res;
+      }
     } catch (e) {
-      if (i === tries - 1) throw e;
+      if (i === tries - 1) {
+        analyticsDelivery.send('api_error', { stage: path.split('?')[0].split('/')[0], error_code: 'network_error', platform: import.meta.env.VITE_TARGET === 'toss' ? 'toss' : 'web' });
+        throw e;
+      }
     }
     await new Promise((r) => setTimeout(r, 500 * (i + 1)));
   }

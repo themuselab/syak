@@ -14,6 +14,12 @@ export type EventName =
   | "gallery_view" // 상세에서 포폴 사진 넘겨봄
   | "menu_view" // 상세에서 메뉴·가격 더보기
   | "filter_apply"
+  | "ui_interaction" | "scroll_depth" | "client_error"
+  | "service_error" | "shop_list_view" | "search" | "search_no_result"
+  | "filter_open" | "filter_reset" | "region_open" | "custom_find_open" | "custom_find_apply"
+  | "location_request" | "location_result" | "shop_detail_error" | "shop_detail_loaded"
+  | "slot_list_view" | "slot_select" | "review_view" | "lead_form_view"
+  | "lead_submit" | "lead_created" | "lead_failed" | "ui_action"
   | "app_open_click"; // "앱으로 보기" 클릭 (placement=위치, store=ios|web)
 
 export type EntryRoute = "organic" | "campaign" | "deeplink" | "share";
@@ -21,6 +27,8 @@ export type EntryRoute = "organic" | "campaign" | "deeplink" | "share";
 export interface AnalyticsEvent {
   event: EventName;
   shopId?: string;
+  isPartner?: boolean;
+  properties?: Record<string, string | number | boolean>;
   shopCategory?: string;
   shopDistrict?: string;
   route?: string; // 예약 루트(naver/talktalk/…) 또는 진입 경로

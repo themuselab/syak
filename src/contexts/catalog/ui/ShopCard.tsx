@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+import { usecases } from "../../../app/composition-root";
 import type { ShopSummary } from "../domain/shop";
 import { thumb, FALLBACK_IMAGE, onImgError } from "../../../shared/ui/image";
 import { color, radius } from "../../../shared/ui/tokens";
@@ -12,8 +14,20 @@ type Props = {
  *                   구(14 subtle)
  *                   [태그: 파트너 / 이벤트 / 가격대 / 첫방문 특가] */
 export function ShopCard({ shop, onClick }: Props) {
+  const element = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!element.current || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(entries => {
+      if (!entries.some(e => e.isIntersecting && e.intersectionRatio >= 0.5)) return;
+      usecases.analytics.track({ event: "impression", shopId: shop.id, isPartner: shop.isPartner, source: "list" });
+      observer.disconnect();
+    }, { threshold: 0.5 });
+    observer.observe(element.current);
+    return () => observer.disconnect();
+  }, [shop.id, shop.isPartner]);
   return (
     <button
+      ref={element}
       onClick={() => onClick(shop)}
       style={{
         display: "flex",

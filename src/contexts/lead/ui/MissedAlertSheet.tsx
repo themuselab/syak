@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usecases } from "../../../app/composition-root";
 
 type Props = { onClose: () => void };
@@ -8,10 +8,14 @@ export function MissedAlertSheet({ onClose }: Props) {
   const [phone, setPhone] = useState("");
   const [state, setState] = useState<"idle" | "done" | "invalid">("idle");
 
+  useEffect(() => { usecases.analytics.track({ event: "lead_form_view" }); }, []);
   async function submit() {
+    usecases.analytics.track({ event: "lead_submit" });
+    try {
     const res = await usecases.lead.registerAlert({ phoneRaw: phone });
-    if (res.ok) setState("done");
-    else setState("invalid");
+    if (res.ok) { setState("done"); usecases.analytics.track({ event: "lead_created" }); }
+    else { setState("invalid"); usecases.analytics.track({ event: "lead_failed", properties: { error_code: res.reason } }); }
+    } catch { usecases.analytics.track({ event: "lead_failed", properties: { error_code: "request_failed" } }); setState("invalid"); }
   }
 
   return (
