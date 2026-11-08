@@ -46,3 +46,8 @@ scraper/*.log
 scraper/diag_samples/
 # Archify 작업 폴더(검증 영수증·캡처)
 .archify/
+
+# Personal Claude configuration and credentials
+CLAUDE.local.md
+.claude/settings.local.json
+.claude/local-backup/
