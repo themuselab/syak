@@ -4,6 +4,7 @@ import { thumbW, FALLBACK_IMAGE, onImgError } from "../../../shared/ui/image";
 import { usecases } from "../../../app/composition-root";
 import { color, radius, shadow, button } from "../../../shared/ui/tokens";
 import type { ReservationRoute } from "../domain/shop";
+import { useNaverCta } from "../../../shared/platform/use-naver-cta";
 
 // 대표(최저) 실서비스가 — add-on/잡메뉴(추가·기장·옵션 등) 제외하고 가장 싼 메뉴
 const PRICE_NOISE = /제거|오프|off|리무브|리페어|음료|추가|옵션|보강|보수|파라핀|영양제|드릴|보호|글루|기장|길이|증모|붙임|별도/;
@@ -300,7 +301,7 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
           </div>
 
           {/* 예약하기 (고정 하단) */}
-          <ReserveBar routes={detail.reservationRoutes} onReserve={(r) => onReserveClick(detail.id, r, { isPartner: detail.isPartner, district: detail.gu, category: detail.category })} />
+          <ReserveBar shopId={detail.id} isPartner={detail.isPartner} routes={detail.reservationRoutes} onReserve={(r) => onReserveClick(detail.id, r, { isPartner: detail.isPartner, district: detail.gu, category: detail.category })} />
         </>
       )}
     </div>
@@ -447,16 +448,17 @@ function Info({ label, value }: { label: string; value: React.ReactNode }) {
 // 네이버 톡톡은 제외 — 예약(네이버 예약) 중심으로 정확하게
 const ROUTE_PRIORITY: ReservationRoute["type"][] = ["naver", "kakao", "instagram", "phone"];
 
-function ReserveBar({ routes: allRoutes, onReserve }: { routes: ReservationRoute[]; onReserve: (r: ReservationRoute) => void }) {
+function ReserveBar({ shopId, isPartner, routes: allRoutes, onReserve }: { shopId: string; isPartner: boolean; routes: ReservationRoute[]; onReserve: (r: ReservationRoute) => void }) {
   const routes = allRoutes.filter((r) => r.type !== "talktalk");
+  const sorted = [...routes].sort((a, b) => ROUTE_PRIORITY.indexOf(a.type) - ROUTE_PRIORITY.indexOf(b.type));
+  const primary = sorted[0];
+  const cta = useNaverCta(shopId, isPartner, primary?.type === "naver" && !!primary.value);
   if (!routes.length)
     return (
       <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, padding: 16, background: color.white, borderTop: `1px solid ${color.line.divider}`, textAlign: "center", color: color.text.faint, fontSize: 14, zIndex: 41 }}>
         예약 정보 없음
       </div>
     );
-  const sorted = [...routes].sort((a, b) => ROUTE_PRIORITY.indexOf(a.type) - ROUTE_PRIORITY.indexOf(b.type));
-  const primary = sorted[0];
   const others = sorted.slice(1, 4);
   const href = (r: ReservationRoute) => (r.type === "phone" ? `tel:${r.value}` : r.value);
   return (
@@ -481,10 +483,10 @@ function ReserveBar({ routes: allRoutes, onReserve }: { routes: ReservationRoute
         href={href(primary)}
         target={primary.type === "phone" ? undefined : "_blank"}
         rel="noreferrer"
-        onClick={() => onReserve(primary)}
+        onClick={() => { cta.onInteraction(); onReserve(primary); }}
         style={{ ...button("primary"), height: 52 }}
       >
-        {primary.label}
+        {primary.type === "naver" ? (cta.label ?? primary.label) : primary.label}
       </a>
     </div>
   );

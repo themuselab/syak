@@ -7,6 +7,38 @@ const Module = require('node:module');
 const vm = require('node:vm');
 const { pathToFileURL } = require('node:url');
 
+test('CTA experiment includes guests with stable device allocation through login and safe fallback', async () => {
+  global.window = { location: { pathname: '/' } };
+  const calls = [];
+  const client = { onInitialized: async () => {}, track() {},
+    isFeatureOn: (key, user) => { calls.push([key, user]); return true; },
+    variationDetail: (key, user) => { calls.push([key, user]); return { variation: 'B', reason: 'TRAFFIC_ALLOCATED' }; },
+    remoteConfig: () => ({ get: () => '네이버에서 확인하기' }) };
+  const { createAnalyticsDelivery } = load('../src/shared/platform/analytics-delivery.ts', { createInstance: () => client });
+  const delivery = createAnalyticsDelivery({ sdkKey: 'test', deviceId: 'same-device' });
+  const signal = new AbortController().signal;
+  assert.equal((await delivery.decideNaverCta(signal)).variation, 'B');
+  delivery.setIdentity('member'); await delivery.decideNaverCta(signal);
+  assert.deepEqual(calls.map(c => c[1].deviceId), Array(4).fill('same-device'));
+  assert.deepEqual(calls.map(c => c[0]), [4, 5, 4, 5]);
+  client.isFeatureOn = () => false;
+  assert.equal(await delivery.decideNaverCta(signal), undefined);
+  client.isFeatureOn = () => true;
+  client.variationDetail = () => ({ variation: 'A', reason: 'EXPERIMENT_DRAFT' });
+  assert.equal(await delivery.decideNaverCta(signal), undefined);
+});
+
+test('cancelled CTA lookup never evaluates or exposes the experiment after initialization', async () => {
+  global.window = { location: { pathname: '/' } }; let release; let allocations = 0;
+  const client = { onInitialized: () => new Promise(r => release = r), isFeatureOn: () => { allocations++; return true; } };
+  const { createAnalyticsDelivery } = load('../src/shared/platform/analytics-delivery.ts', { createInstance: () => client });
+  const delivery = createAnalyticsDelivery({ sdkKey: 'test', deviceId: 'device' });
+  delivery.setIdentity('member');
+  const abort = new AbortController(); const decision = delivery.decideNaverCta(abort.signal);
+  await new Promise(r => setImmediate(r)); abort.abort(); release();
+  assert.equal(await decision, undefined); assert.equal(allocations, 0);
+});
+
 function load(relative, sdk) {
   const filename = path.resolve(__dirname, relative);
   const code = ts.transpileModule(fs.readFileSync(filename, 'utf8'), {

@@ -16,6 +16,7 @@ export function createAnalyticsDelivery(options: Options) {
       const { createInstance } = await import('@hackler/javascript-sdk');
       const client = createInstance(options.sdkKey!, {
         automaticPageTracking: false, automaticRouteTracking: false,
+        pollingIntervalMillis: 60000,
         ...(deviceId ? { user: { deviceId } } : {}),
       });
       await client.onInitialized();
@@ -24,6 +25,22 @@ export function createAnalyticsDelivery(options: Options) {
     return sdk;
   }
   return {
+    async decideNaverCta(signal: AbortSignal) {
+      const currentUserId = userId;
+      if (signal.aborted) return undefined;
+      const client = await initialize();
+      if (!client || !deviceId || signal.aborted) return undefined;
+      const user = { deviceId, ...(currentUserId ? { userId: currentUserId } : {}) };
+      try {
+        if (!client.isFeatureOn(4, user)) return undefined;
+        const decision = client.variationDetail(5, user);
+        if (!['TRAFFIC_ALLOCATED', 'OVERRIDDEN'].includes(decision.reason)) return undefined;
+        const variation = decision.variation;
+        if (variation !== 'A' && variation !== 'B') return undefined;
+        const label = client.remoteConfig(user).get('syak_naver_cta_label', '네이버에서 확인하기');
+        return { variation, label: typeof label === 'string' && label.trim().length > 0 && label.length <= 24 ? label : '네이버에서 확인하기' };
+      } catch { return undefined; }
+    },
     setIdentity(id: string | null, anonymous?: string) { userId = id ?? undefined; if (anonymous) deviceId = anonymous; },
     send(name: string, properties: EventProperties) {
       if (typeof window === 'undefined') return;

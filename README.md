@@ -1,5 +1,7 @@
 # 샥 (syak) 2.0
 
+Hackle 실험·분배·운영 스위치: [docs/analytics/hackle-growth.md](docs/analytics/hackle-growth.md).
+
 > 전국 뷰티샵 디스커버리 — 웹(themuselab.kr) + Apps-in-Toss 미니앱 (동일 코드 dual-build).
 > 지도에서 내 주변 뷰티샵(네일·헤어·속눈썹·왁싱·반영구·피부·마사지·태닝)을 둘러보고, **오늘 당장 예약 가능한 빈자리**를 찾아 바로 네이버 예약으로 연결한다.
 
