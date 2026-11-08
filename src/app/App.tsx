@@ -6,12 +6,14 @@ import { MapView as MapViewKakao } from "../contexts/catalog/ui/MapView";
 import { MapViewNaver } from "../contexts/catalog/ui/MapViewNaver";
 // 지도 제공자 전환: 기본 네이버, VITE_MAP_PROVIDER=kakao 로 카카오 폴백.
 const MapView = import.meta.env.VITE_MAP_PROVIDER === "kakao" ? MapViewKakao : MapViewNaver;
-import { CollectionChips, type ChipKey } from "../contexts/catalog/ui/CollectionChips";
+import type { ChipKey } from "../contexts/catalog/ui/CollectionChips";
+import { HomeHeader, HomeFilters } from "../contexts/catalog/ui/HomeChrome";
 import { ShopListSheet } from "../contexts/catalog/ui/ShopListSheet";
 import { ActiveFilters } from "../contexts/catalog/ui/ActiveFilters";
 import type { CustomFind } from "../contexts/catalog/ui/CustomFindModal";
 import { SnapSheet } from "../shared/ui/SnapSheet";
 import { ShopListSkeleton } from "../shared/ui/Skeleton";
+import { MapBoundary } from "../shared/ui/MapBoundary";
 import { usecases } from "./composition-root";
 import { getUserPosition } from "../shared/platform/geolocation";
 import { resolveAttribution } from "../shared/platform/attribution";
@@ -19,22 +21,21 @@ import { isReturningVisitor } from "../shared/platform/visitor";
 import { distanceMeters, type Coordinate } from "../shared/domain/coordinate";
 import type { ShopSummary, ShopPin } from "../contexts/catalog/domain/shop";
 import type { FilterCriteria } from "../contexts/catalog/domain/filters";
+import { matchesFilter } from "../contexts/catalog/domain/filters";
 import { CATEGORIES } from "../shared/domain/category";
 import { appLink } from "../shared/platform/app-link";
-import { color, shadow, radius, mapChip, FONT_FAMILY } from "../shared/ui/tokens";
+import { color, shadow, radius, FONT_FAMILY } from "../shared/ui/tokens";
 
 // 오버레이(상세·필터·지역·맞춤찾기)는 첫 화면에 안 보임 → 별도 청크로 분리해 초기 JS 축소.
 // 첫 탭 지연이 없도록 마운트 후 idle 때 미리 받아둔다(preloadOverlays).
 const loadShopDetail = () => import("../contexts/catalog/ui/ShopDetailSheet");
 const loadFilter = () => import("../contexts/catalog/ui/FilterModal");
 const loadRegion = () => import("../contexts/catalog/ui/RegionPicker");
-const loadCustomFind = () => import("../contexts/catalog/ui/CustomFindModal");
 const ShopDetailSheet = lazy(() => loadShopDetail().then((m) => ({ default: m.ShopDetailSheet })));
 const FilterModal = lazy(() => loadFilter().then((m) => ({ default: m.FilterModal })));
 const RegionPicker = lazy(() => loadRegion().then((m) => ({ default: m.RegionPicker })));
-const CustomFindModal = lazy(() => loadCustomFind().then((m) => ({ default: m.CustomFindModal })));
 function preloadOverlays() {
-  void Promise.all([loadShopDetail(), loadFilter(), loadRegion(), loadCustomFind()]).catch(() => {
+  void Promise.all([loadShopDetail(), loadFilter(), loadRegion()]).catch(() => {
     /* 무시 — 열 때 lazy가 다시 요청 */
   });
 }
@@ -57,6 +58,7 @@ function filterSummary(c: FilterCriteria): string {
   const parts: string[] = [];
   if (c.categories?.length) parts.push(...c.categories);
   if (c.priceTiers?.length) parts.push(...c.priceTiers);
+  if (c.priceMin != null || c.priceMax != null) parts.push(`가격:${c.priceMin ?? 0}-${c.priceMax ?? '이상'}`);
   if (c.services?.length) parts.push(...c.services);
   if (c.hasEventOnly) parts.push("이벤트");
   if (c.firstVisitOnly) parts.push("첫방문");
@@ -80,7 +82,7 @@ export default function App() {
   const [myPos, setMyPos] = useState<Coordinate | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [regionOpen, setRegionOpen] = useState(false);
-  const [findOpen, setFindOpen] = useState(false);
+  const [filterSection, setFilterSection] = useState<'sort' | 'price' | 'time'>('sort');
   const [customFind, setCustomFind] = useState<CustomFind | null>(null);
   const [openShopIds, setOpenShopIds] = useState<Set<string> | null>(null); // 맞춤찾기 시간에 빈 샵
   const [chip, setChip] = useState<ChipKey | null>(null);
@@ -218,6 +220,23 @@ export default function App() {
   // 디바운스 350ms: 빠른 pan/zoom에 매번 로드하지 않고 멈춘 뒤 1회만
   const boundsTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const lastBounds = useRef<Parameters<typeof loadBounds>[0] | null>(null);
+  // The list remains usable when the map SDK is slow or blocked.
+  useEffect(() => {
+    let alive = true;
+    const timer = setTimeout(() => {
+      if (lastBounds.current) return;
+      if (sortByRef.current === 'partner') return;
+      if (qRef.current) { showShops([]); return; }
+      if (gusRef.current?.length) {
+        void usecases.catalog.byGus(gusRef.current).then(rows => { if (alive) showShops(rows); });
+        return;
+      }
+      const bounds = { swLat: 37.48, swLng: 127.01, neLat: 37.515, neLng: 127.05 };
+      lastBounds.current = bounds;
+      void loadBounds(bounds);
+    }, 2000);
+    return () => { alive = false; clearTimeout(timer); };
+  }, [loadBounds, showShops]);
   const sortByRef = useRef(filter.sortBy);
   sortByRef.current = filter.sortBy;
   const gusRef = useRef(filter.gus);
@@ -251,11 +270,13 @@ export default function App() {
   }, [filter.sortBy, showShops, loadBounds]);
 
   const displayed = useMemo(() => {
-    const base = q ? nameResults : shops;
+    const base = q ? nameResults.filter(shop => matchesFilter(shop, filter)) : shops;
     let list = applyChip(base, chip);
     if (openShopIds) list = list.filter((s) => openShopIds.has(s.id)); // 맞춤찾기: 그 시간 빈 샵만
     const sortBy = filter.sortBy ?? "recommend";
-    if (sortBy === "priceLow") {
+    if (sortBy === "review") {
+      list = [...list].sort((a, b) => b.reviewCount - a.reviewCount);
+    } else if (sortBy === "priceLow") {
       list = [...list].sort((a, b) => (a.minPrice ?? Infinity) - (b.minPrice ?? Infinity));
     } else if (sortBy === "priceHigh") {
       list = [...list].sort((a, b) => (b.minPrice ?? -1) - (a.minPrice ?? -1));
@@ -268,7 +289,7 @@ export default function App() {
       list = [...list].sort((a, b) => (b.isPartner ? 1 : 0) - (a.isPartner ? 1 : 0));
     }
     return list;
-  }, [q, nameResults, shops, chip, openShopIds, myPos, filter.sortBy]);
+  }, [q, nameResults, shops, chip, openShopIds, myPos, filter]);
 
   async function selectRegions(gus: string[]) {
     setFilter({ ...filter, gus: gus.length ? gus : undefined });
@@ -300,7 +321,6 @@ export default function App() {
   }, [loading, displayed, q]);
   useEffect(() => { if (filterOpen) usecases.analytics.track({ event: "filter_open" }); }, [filterOpen]);
   useEffect(() => { if (regionOpen) usecases.analytics.track({ event: "region_open" }); }, [regionOpen]);
-  useEffect(() => { if (findOpen) usecases.analytics.track({ event: "custom_find_open" }); }, [findOpen]);
   useEffect(() => { if (error) usecases.analytics.track({ event: "service_error", properties: { stage: "catalog" } }); }, [error]);
 
   function resetAll() {
@@ -323,6 +343,7 @@ export default function App() {
   }
 
   const activeFilterCount =
+    (filter.priceMin != null || filter.priceMax != null ? 1 : 0) +
     (filter.categories?.length ?? 0) +
     (filter.priceTiers?.length ?? 0) +
     (filter.services?.length ?? 0) +
@@ -332,7 +353,8 @@ export default function App() {
 
   // 정렬 선택 시 필터 버튼에 그 라벨 노출(기본순은 "필터" 유지)
   const sortLabel =
-    filter.sortBy === "priceLow" ? "가격 낮은순"
+    filter.sortBy === "review" ? "리뷰 많은순"
+      : filter.sortBy === "priceLow" ? "가격 낮은순"
       : filter.sortBy === "priceHigh" ? "가격 높은순"
       : filter.sortBy === "partner" ? "샥 파트너"
       : null;
@@ -347,66 +369,15 @@ export default function App() {
       : `${filter.gus[0].replace(/구$/, "")} 외 ${filter.gus.length - 1}`
     : "지역";
 
-  const regionOn = !!filter.gus?.length;
-  const filterOn = !!sortLabel || activeFilterCount > 0;
 
   return (
-    <div ref={setRoot} style={{ position: "fixed", inset: 0, fontFamily: FONT_FAMILY, background: color.surface.map, color: color.text.strong }}>
-      {/* 헤더 — 앱 홈처럼 지도 위에 떠 있는 검색바 + 칩(배경 없음, 빈 곳은 지도 조작이 통과) */}
-      <header ref={headerRef} style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 25, padding: "12px 16px 6px", pointerEvents: "none" }}>
-        {/* 검색바 — 앱 SearchBar: 높이 44 pill, 흰 배경, primary-300 테두리, 그림자 sm, 왼쪽 심볼 */}
-        <div
-          style={{ pointerEvents: "auto", display: "flex", alignItems: "center", height: 44, boxSizing: "border-box", borderRadius: radius.full, border: `1px solid ${color.primary[300]}`, background: color.white, boxShadow: shadow.sm, paddingLeft: 4, paddingRight: 8 }}
-        >
-          <img src={`${import.meta.env.BASE_URL}brand/syak-symbol-pink.png`} alt="" width={40} height={40} style={{ flexShrink: 0, marginRight: 2 }} />
-          <input
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              if (e.target.value.trim()) sheetRef.current?.snapTo(0);
-            }}
-            placeholder="샵 이름으로 찾기"
-            style={{ flex: 1, minWidth: 0, height: "100%", padding: 0, border: "none", outline: "none", background: "transparent", fontSize: 16, color: color.gray[900] }}
-          />
-          {query && (
-            <button onClick={() => setQuery("")} aria-label="검색어 지우기" style={{ border: "none", background: "transparent", padding: 6, display: "flex", cursor: "pointer" }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color.text.placeholder} strokeWidth={2} strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-            </button>
-          )}
-        </div>
-
-        {/* 칩 줄 — 앱 CategoryChip(흰 pill + 그림자), 선택 시 앱 FilterChip 선택 상태 */}
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10 }}>
-          {/* 지역 */}
-          <button onClick={() => setRegionOpen(true)} style={{ ...mapChip(regionOn), pointerEvents: "auto" }}>
-            {regionLabel}
-            <Chevron color={regionOn ? color.primary[500] : color.gray[800]} />
-          </button>
-          {/* 필터 (정렬 선택 시 그 라벨 표시 — 기본순은 "필터" 유지) */}
-          <button onClick={() => setFilterOpen(true)} style={{ ...mapChip(filterOn), pointerEvents: "auto" }}>
-            {sortLabel ?? "필터"}
-            {activeFilterCount > 0 && (
-              <span style={{ marginLeft: 2, minWidth: 18, height: 18, boxSizing: "border-box", background: color.primary[500], color: color.white, borderRadius: radius.full, fontSize: 11, lineHeight: "18px", fontWeight: 600, padding: "0 5px", textAlign: "center" }}>
-                {activeFilterCount}
-              </span>
-            )}
-          </button>
-          {/* 맞춤 샵 찾기 — 앱 브랜드 칩(연분홍 + primary-300 테두리), 적용 중이면 brand.deep 채움 */}
-          <div style={{ marginLeft: "auto" }}>
-            {customFind ? (
-              <button onClick={() => setCustomFind(null)} style={{ ...mapChip(), background: color.brand.deep, color: color.white, pointerEvents: "auto" }}>
-                {customFind.chipLabel} ✕
-              </button>
-            ) : (
-              <button onClick={() => setFindOpen(true)} style={{ ...mapChip(), background: color.brand.tint, border: `1px solid ${color.primary[300]}`, color: color.primary[500], pointerEvents: "auto" }}>
-                빈자리 찾기
-              </button>
-            )}
-          </div>
-        </div>
-        <div style={{ pointerEvents: "auto" }}>
-          <ActiveFilters filter={filter} onChange={setFilter} />
-        </div>
+    <div ref={setRoot} className="consumer-app" style={{ position: "fixed", inset: 0, fontFamily: FONT_FAMILY, background: color.surface.map, color: color.text.strong }}>
+      <header ref={headerRef} className="home-header">
+        <HomeHeader query={query} onQueryChange={setQuery}
+          category={filter.categories?.length === 1 ? filter.categories[0] : undefined}
+          partner={filter.sortBy === "partner"}
+          onPick={value => { setQuery(""); setFilter({ ...filter, categories: value === "partner" ? undefined : [value], sortBy: value === "partner" ? "partner" : "recommend" }); }}
+          onClear={() => setFilter({ ...filter, categories: undefined, sortBy: "recommend" })} />
       </header>
 
       {/* 지도 — isolation으로 별도 쌓임 맥락: 네이버 로고·축척(SDK가 큰 z-index를 줌)이 상세·모달 위로 비치지 않게 */}
@@ -414,7 +385,7 @@ export default function App() {
         {error ? (
           <div style={{ padding: 24, paddingTop: 140, color: color.status.error, fontSize: 14 }}>데이터 로드 실패: {error}</div>
         ) : (
-          <MapView shops={mapShops} highlightedId={highlightId} center={mapCenter} myPos={myPos} showToday={chip === "today"} onPinClick={onPinClick} onBoundsChanged={onBoundsChanged} />
+          <MapBoundary><MapView shops={mapShops} highlightedId={highlightId} center={mapCenter} myPos={myPos} showToday={chip === "today"} showDiscount={chip === "event"} onPinClick={onPinClick} onBoundsChanged={onBoundsChanged} /></MapBoundary>
         )}
       </div>
 
@@ -424,7 +395,7 @@ export default function App() {
         target={appLink.sameTab ? undefined : "_blank"}
         rel="noopener"
         onClick={() => usecases.analytics.track({ event: "app_open_click", placement: "map_fab", store: appLink.store })}
-        style={{ position: "absolute", right: 16, bottom: "calc(30vh + 14px)", zIndex: 18, display: "inline-flex", alignItems: "center", gap: 6, height: 40, boxSizing: "border-box", padding: "0 16px 0 13px", borderRadius: radius.full, background: color.primary[500], color: color.white, fontWeight: 600, fontSize: 14, textDecoration: "none", boxShadow: shadow.md }}
+        style={{ position: "absolute", left: 16, bottom: "calc(40dvh + 14px)", zIndex: 18, display: "inline-flex", alignItems: "center", gap: 6, height: 40, boxSizing: "border-box", padding: "0 16px 0 13px", borderRadius: radius.full, background: color.primary[500], color: color.white, fontWeight: 600, fontSize: 14, textDecoration: "none", boxShadow: shadow.md }}
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color.white} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
           <rect width="14" height="20" x="5" y="2" rx="2" ry="2" />
@@ -450,15 +421,14 @@ export default function App() {
             <ShopListSkeleton />
           ) : (
             <>
-              {customFind ? (
-                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 20px 10px", fontSize: 14, fontWeight: 600, color: color.text.strong }}>
-                  <span style={{ width: 8, height: 8, borderRadius: 4, background: color.status.open }} />
-                  {customFind.bannerLabel}
-                </div>
-              ) : (
-                <CollectionChips active={chip} onSelect={(k) => { setChip(k); if (k) usecases.analytics.track({ event: "collection_click", source: k }); }} />
-              )}
-              <div style={{ borderTop: `1px solid ${color.line.divider}` }} />
+              <div className="sticky-list-filters">
+                <HomeFilters active={chip} onToggle={value => { setChip(value); if (value) usecases.analytics.track({ event: "collection_click", source: value }); }}
+                  sortLabel={sortLabel ?? "관련도순"} priceLabel={filter.priceMin != null || filter.priceMax != null ? `${(filter.priceMin ?? 0) / 10000}~${filter.priceMax != null ? filter.priceMax / 10000 : '10+'}만원` : filter.priceTiers?.join(" · ")} timeLabel={customFind?.chipLabel}
+                  regionLabel={regionLabel === "지역" ? undefined : regionLabel}
+                  onSort={() => { setFilterSection('sort'); setFilterOpen(true); }} onPrice={() => { setFilterSection('price'); setFilterOpen(true); }} onTime={() => { usecases.analytics.track({ event: 'custom_find_open' }); setFilterSection('time'); setFilterOpen(true); }} onRegion={() => setRegionOpen(true)} />
+                <ActiveFilters filter={filter} onChange={setFilter} />
+                {customFind && <button className="custom-find-summary" onClick={() => setCustomFind(null)}>{customFind.bannerLabel} <span>해제 ×</span></button>}
+              </div>
               <ShopListSheet shops={displayed} onShopClick={openDetail} onReset={resetAll} />
             </>
           )}
@@ -470,6 +440,7 @@ export default function App() {
       {selectedId && (
         <Suspense fallback={null}>
           <ShopDetailSheet
+            key={selectedId}
             shopId={selectedId}
             onClose={() => setSelectedId(null)}
             onReserveClick={(shopId, route, meta) => usecases.analytics.track({ event: "reserve_click", shopId, isPartner: meta?.isPartner, route: route.type, slotDate: meta?.slot?.date, slotTime: meta?.slot?.time, shopDistrict: meta?.district, shopCategory: meta?.category })}
@@ -480,22 +451,15 @@ export default function App() {
         <Suspense fallback={null}>
           <FilterModal
             initial={filter}
+            initialTime={customFind}
+            initialSection={filterSection}
+            onTimeChange={value => { setCustomFind(value); if (value) usecases.analytics.track({ event: "custom_find_apply", properties: { slot_date: value.date, time_count: value.hours.length } }); }}
             onApply={(c) => { setFilter(c); usecases.analytics.track({ event: "filter_apply", source: filterSummary(c) }); }}
             onClose={() => setFilterOpen(false)}
           />
         </Suspense>
       )}
       {regionOpen && <Suspense fallback={null}><RegionPicker selected={filter.gus ?? []} onApply={selectRegions} onClose={() => setRegionOpen(false)} /></Suspense>}
-      {findOpen && <Suspense fallback={null}><CustomFindModal onApply={(value) => { setCustomFind(value); usecases.analytics.track({ event: "custom_find_apply", properties: { slot_date: value.date, time_count: value.hours.length } }); }} onClose={() => setFindOpen(false)} /></Suspense>}
     </div>
-  );
-}
-
-// 앱 FilterChip의 ChevronDown(lucide) — 지역 칩 오른쪽
-function Chevron({ color: c }: { color: string }) {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <path d="m6 9 6 6 6-6" />
-    </svg>
   );
 }

@@ -48,7 +48,7 @@ export function ShopListSheet({ shops, onShopClick, onReset }: Props) {
           style={{
             borderBottom: `1px solid ${color.line.divider}`,
             contentVisibility: "auto",
-            containIntrinsicSize: "0 97px",
+            containIntrinsicSize: "0 310px",
           } as React.CSSProperties}
         >
           <ShopCard shop={s} onClick={onShopClick} />

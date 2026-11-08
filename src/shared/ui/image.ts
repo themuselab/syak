@@ -5,6 +5,12 @@
 // 이미지 없음/깨짐(404) 폴백 — public/fallback.png (로고 포함 플레이스홀더)
 export const FALLBACK_IMAGE = "/fallback.png";
 
+/** Same resize proxy and allowed 3:4 preset as the consumer app. */
+export function feedImage(url: string): string {
+  if (!/^https?:\/\/[a-z-]+\.pstatic\.net\//.test(url) || url.startsWith('https://search.pstatic.net/')) return url;
+  return `https://search.pstatic.net/common/?autoRotate=true&type=f300_400&src=${url}`;
+}
+
 /** <img onError> 핸들러 — 깨진 이미지를 폴백으로 교체. 무한루프 방지(1회만). */
 export function onImgError(e: React.SyntheticEvent<HTMLImageElement>) {
   const el = e.currentTarget;

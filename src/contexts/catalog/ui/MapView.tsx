@@ -61,12 +61,13 @@ type Props = {
   highlightedId?: string;
   center?: Coordinate;
   myPos?: Coordinate | null;
+  showDiscount?: boolean;
   showToday?: boolean; // '오늘 예약' 토글 ON일 때만 초록핀, 평소엔 기본(핑크) 핀
   onPinClick: (shop: ShopPin) => void;
   onBoundsChanged?: (b: Bounds) => void;
 };
 
-export function MapView({ shops, highlightedId, center, myPos, showToday = false, onPinClick, onBoundsChanged }: Props) {
+export function MapView({ shops, highlightedId, center, myPos, showToday = false, showDiscount = false, onPinClick, onBoundsChanged }: Props) {
   const [loading, error] = useKakaoLoader({
     appkey: KAKAO_KEY,
     libraries: ["clusterer"], // MarkerClusterer 사용 시 필수
@@ -196,11 +197,11 @@ export function MapView({ shops, highlightedId, center, myPos, showToday = false
         const green = showToday && s.todayOpen; // 토글 ON일 때만 초록
         const marker = new kakao.maps.Marker({
           position: new kakao.maps.LatLng(s.coord.lat, s.coord.lng),
-          image: green ? todayImage : s.hasEvent ? eventImage : images[s.category] || fallback,
+          image: green ? todayImage : (showDiscount && s.hasEvent) ? eventImage : images[s.category] || fallback,
           title: s.name,
         });
         if (green) marker.setZIndex(7); // 오늘 가능(초록) 최상위
-        else if (s.hasEvent) marker.setZIndex(6); // 할인핀
+        else if (showDiscount && s.hasEvent) marker.setZIndex(6); // 할인핀
         kakao.maps.event.addListener(marker, "click", () => onClickRef.current(s));
         byId[s.id] = marker;
         return marker;
@@ -212,7 +213,7 @@ export function MapView({ shops, highlightedId, center, myPos, showToday = false
     if (toAdd.length) requestAnimationFrame(step);
 
     return () => { cancelled = true; };
-  }, [map, shops, showToday]);
+  }, [map, shops, showToday, showDiscount]);
 
   // '오늘 예약' 토글 변화 시 기존(공유) 마커 색 즉시 갱신 — diff는 새 마커만 추가하므로 별도 동기화
   useEffect(() => {
@@ -223,10 +224,10 @@ export function MapView({ shops, highlightedId, center, myPos, showToday = false
       const mk = byId[s.id];
       if (!mk) continue;
       const green = showToday && s.todayOpen;
-      mk.setImage(green ? images["__today__"] : s.hasEvent ? images["__event__"] : images[s.category] || images["네일"]);
-      mk.setZIndex(green ? 7 : s.hasEvent ? 6 : 3);
+      mk.setImage(green ? images["__today__"] : (showDiscount && s.hasEvent) ? images["__event__"] : images[s.category] || images["네일"]);
+      mk.setZIndex(green ? 7 : (showDiscount && s.hasEvent) ? 6 : 3);
     }
-  }, [showToday, shops]);
+  }, [showToday, showDiscount, shops]);
 
   // 선택 핀 강조 (imperatively 이미지 교체)
   const prevHl = useRef<string | undefined>();
@@ -239,7 +240,7 @@ export function MapView({ shops, highlightedId, center, myPos, showToday = false
       mk(prevHl.current).setImage(
         (prev?.isPartner && imagesRef.current["__partner__"]) ||
           (showToday && prev?.todayOpen && imagesRef.current["__today__"]) ||
-          (prev?.hasEvent && imagesRef.current["__event__"]) ||
+          (showDiscount && prev?.hasEvent && imagesRef.current["__event__"]) ||
           (prev && imagesRef.current[prev.category]) ||
           imagesRef.current["네일"],
       );
@@ -253,7 +254,7 @@ export function MapView({ shops, highlightedId, center, myPos, showToday = false
       mk(highlightedId).setZIndex(10);
     }
     prevHl.current = highlightedId;
-  }, [highlightedId, shops, showToday]);
+  }, [highlightedId, shops, showToday, showDiscount]);
 
   function recenter() {
     const kakao = (window as KakaoAny).kakao;
@@ -286,7 +287,7 @@ export function MapView({ shops, highlightedId, center, myPos, showToday = false
         <button
           onClick={recenter}
           aria-label="현재 위치로"
-          style={{ position: "absolute", left: 16, bottom: "calc(30vh + 14px)", zIndex: 18, width: 44, height: 44, borderRadius: 22, border: "none", background: "#fff", boxShadow: "0 2px 10px rgba(0,0,0,.18)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+          style={{ position: "absolute", right: 16, bottom: "calc(40dvh + 14px)", zIndex: 18, width: 44, height: 44, borderRadius: 22, border: "none", background: "#fff", boxShadow: "0 2px 10px rgba(0,0,0,.18)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ec4899" strokeWidth={2} strokeLinecap="round">
             <circle cx="12" cy="12" r="3.5" />

@@ -6,10 +6,11 @@
 ## 컴포넌트
 - `MapView.tsx` — 카카오 지도 + 샵 핀. diff 기반 마커(클러스터러 1회 생성 후 추가/제거 delta), 파트너·오늘예약 핀은 비클러스터 직접 표시. 핀 우선순위: 파트너(금별)>오늘예약(초록체크)>이벤트(분홍%)>분야(회색점).
 - `ShopListSheet.tsx` — 바텀시트 리스트뷰. `ShopCard` 나열.
-- `ShopCard.tsx` — 리스트 한 줄(썸네일·이름·가격·뱃지).
-- `ShopDetailSheet.tsx` — 상세 바텀시트(이미지 갤러리/오늘·내일 예약 슬롯/최저가 배너/파일럿 쿠폰/메뉴/리뷰/예약 버튼).
+- `HomeChrome.tsx` — 앱과 같은 검색바·카테고리·시트 필터 바.
+- `ShopCard.tsx` — 앱 피드 카드(메타·시간·사진 3장·리뷰).
+- `ShopDetailSheet.tsx` — 앱 상세 구조, 고정 탭·가격·3일 예약·리뷰와 하단 예약 버튼.
 - `CollectionChips.tsx` — 가로 스크롤 컬렉션 칩(할인·가격대·첫방문·리뷰많은).
-- `FilterModal.tsx` — 정렬(기본/가격/샥파트너) + 분야/가격/시술/혜택 복합 필터 + 초기화.
+- `FilterModal.tsx` — 통합 정렬·가격 범위·예약시간 패널, 추가 분야·시술·혜택 조건과 초기화.
 - `RegionPicker.tsx` — 지역(구/시) 다중 선택(합집합).
 - `ActiveFilters.tsx` — 적용된 필터 요약 칩.
 - `CustomFindModal.tsx` — "젤네일 되는 곳" 같은 시술 기반 찾기.

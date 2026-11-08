@@ -1,5 +1,5 @@
 // 유스케이스 ↔ React 연결 훅. 뷰포트(지도 영역) 기반 로딩 — egress 절약.
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { usecases } from "../../../../app/composition-root";
 import type { ShopSummary, ShopPin } from "../../domain/shop";
 import { matchesFilter } from "../../domain/filters";
@@ -12,26 +12,30 @@ export function useCatalog() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterCriteria>({});
+  const requestId = useRef(0);
 
   // 지도 영역 안: 리스트 요약(소량) + 지도 핀(대량) 동시 로드
   const loadBounds = useCallback(async (b: Bounds): Promise<void> => {
+    const current = ++requestId.current;
     try {
       const [sum, pn] = await Promise.all([
         usecases.catalog.inBounds(b, 300),
         usecases.catalog.pinsInBounds(b, 5000),
       ]);
+      if (current !== requestId.current) return;
       setLoaded(sum);
       setPins(pn);
       setError(null);
     } catch (e) {
-      setError(String(e));
+      if (current === requestId.current) setError(String(e));
     } finally {
-      setLoading(false);
+      if (current === requestId.current) setLoading(false);
     }
   }, []);
 
   // 직접 세팅 (지역선택·이름검색 결과 등) — 지도 핀도 그 셋으로 맞춤
   const showShops = useCallback((s: ShopSummary[]) => {
+    requestId.current++;
     setLoaded(s);
     setPins(s); // ShopSummary는 ShopPin 필드를 모두 가짐
     setLoading(false);

@@ -32,13 +32,29 @@ function toSummary(r: any): ShopSummary {
 const bboxQuery = (b: Bounds, limit: number) =>
   `swLat=${b.swLat}&swLng=${b.swLng}&neLat=${b.neLat}&neLng=${b.neLng}&limit=${limit}`;
 
+type FeedItem = { id: string; photos: string[]; previewReview: string | null; slotSummary: { times: string[] }[] };
+
+// Reuse the app's public batch read model; never fetch each card's full detail.
+async function enrichFeed(rows: ShopSummary[], query: string): Promise<ShopSummary[]> {
+  try {
+    const result = await apiGet<{ items: FeedItem[] }>(`shops?${query}&sort=review&limit=100`);
+    const items = new Map(result.items.map(item => [item.id, item]));
+    const now = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit' }).format(new Date());
+    return rows.map(row => {
+      const item = items.get(row.id);
+      return item ? { ...row, photos: item.photos, previewReview: item.previewReview,
+        todayTimes: row.todayOpen ? [...new Set(item.slotSummary.flatMap(slot => slot.times).map(t => t.slice(0, 5)).filter(t => t >= now))].sort() : [] } : row;
+    });
+  } catch { return rows; }
+}
+
 export class ApiShopRepository implements ShopRepository {
   private detailCache = new Map<string, ShopDetail | null>();
 
   async inBounds(b: Bounds, limit = 600): Promise<ShopSummary[]> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rows = await apiGet<any[]>(`web/shops/in-bounds?${bboxQuery(b, limit)}`);
-    return rows.map(toSummary);
+    return enrichFeed(rows.map(toSummary), bboxQuery(b, limit).replace(/&limit=\d+$/, ''));
   }
 
   async pinsInBounds(b: Bounds, limit = 5000): Promise<ShopPin[]> {
@@ -67,13 +83,13 @@ export class ApiShopRepository implements ShopRepository {
     const q = encodeURIComponent(gus.join(","));
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rows = await apiGet<any[]>(`web/shops/by-gu?gus=${q}&limit=${limit}`);
-    return rows.map(toSummary);
+    return enrichFeed(rows.map(toSummary), `districts=${q}`);
   }
 
   async partners(limit = 200): Promise<ShopSummary[]> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rows = await apiGet<any[]>(`web/shops/partners?limit=${limit}`);
-    return rows.map(toSummary);
+    return enrichFeed(rows.map(toSummary), 'is_partner=true');
   }
 
   async searchByName(query: string): Promise<ShopSummary[]> {
@@ -81,7 +97,7 @@ export class ApiShopRepository implements ShopRepository {
     if (!q0) return [];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rows = await apiGet<any[]>(`web/shops/search?q=${encodeURIComponent(q0)}`);
-    return rows.map(toSummary);
+    return enrichFeed(rows.map(toSummary), `q=${encodeURIComponent(q0)}`);
   }
 
   async byId(id: string): Promise<ShopDetail | null> {

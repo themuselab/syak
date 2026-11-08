@@ -11,7 +11,8 @@
     "deploy": "ait deploy",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "test:analytics": "node scripts/analytics.test.cjs"
+    "test:analytics": "node scripts/analytics.test.cjs",
+    "test:catalog": "node scripts/catalog.test.cjs"
   },
   "dependencies": {
     "@apps-in-toss/web-framework": "^2.6.1",

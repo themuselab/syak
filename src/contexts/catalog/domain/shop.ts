@@ -54,6 +54,9 @@ export interface ShopSummary {
   todayOpen: boolean; // 오늘 빈자리 있음 (당일 예약 가능)
   reservable: boolean;
   services: string[]; // 시술 태그(젤네일/패디/속눈썹…) — 예약 item에서 추출
+  photos?: string[];
+  previewReview?: string | null;
+  todayTimes?: string[];
 }
 
 export interface Menu {
@@ -72,6 +75,8 @@ export interface Review {
 
 /** 상세 화면용 (요약 + 풍부한 정보) */
 export interface ShopDetail extends ShopSummary {
+  introduction?: string | null;
+  businessHours?: { day: string; start: string | null; end: string | null; breaks?: { start: string; end: string }[] }[] | null;
   roadAddress: string | null;
   instagram: string | null;
   phone: string | null;

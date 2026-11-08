@@ -3,16 +3,19 @@
 import type { ShopSummary, PriceTier } from "./shop";
 import type { Category } from "../../../shared/domain/category";
 
-export type SortKey = "recommend" | "priceLow" | "priceHigh" | "partner";
+export type SortKey = "recommend" | "review" | "priceLow" | "priceHigh" | "partner";
 
 export const SORT_OPTIONS: { key: SortKey; label: string }[] = [
-  { key: "recommend", label: "기본순" },
+  { key: "recommend", label: "관련도순" },
+  { key: "review", label: "리뷰 많은순" },
   { key: "priceLow", label: "가격 낮은순" },
   { key: "priceHigh", label: "가격 높은순" },
   { key: "partner", label: "샥 파트너" },
 ];
 
 export interface FilterCriteria {
+  priceMin?: number;
+  priceMax?: number;
   gus?: string[]; // 선택한 지역(구/시) — 여러 개 = 합집합(AND 다중선택)
   categories?: Category[];
   priceTiers?: PriceTier[];
@@ -24,6 +27,8 @@ export interface FilterCriteria {
 }
 
 export function matchesFilter(shop: ShopSummary, c: FilterCriteria): boolean {
+  if (c.priceMin != null && (shop.minPrice == null || shop.minPrice < c.priceMin)) return false;
+  if (c.priceMax != null && (shop.minPrice == null || shop.minPrice > c.priceMax)) return false;
   if (c.gus?.length && !c.gus.includes(shop.gu)) return false;
   if (c.categories?.length && !c.categories.some((cat) => shop.categories.includes(cat))) return false;
   if (c.priceTiers?.length && !c.priceTiers.includes(shop.priceTier)) return false;

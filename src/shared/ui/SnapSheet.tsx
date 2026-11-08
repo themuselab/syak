@@ -16,10 +16,11 @@ type Props = {
  *  항상 떠있는 비모달 시트(닫히지 않음). 배경(Backdrop) 없음 → 지도 보임.
  *  react-modal-sheet의 initialSnap이 안 먹는 케이스가 있어 마운트 후 강제 snapTo. */
 export const SnapSheet = forwardRef<SheetRef, Props>(function SnapSheet(
-  { children, snapPoints = [0, 0.3, 0.6, 1], initialSnap = 1, onSnap, mountPoint },
+  { children, snapPoints = [0, 0.12, 0.4, 1], initialSnap = 2, onSnap, mountPoint },
   forwardedRef,
 ) {
   const innerRef = useRef<SheetRef | null>(null);
+  const snapIndex = useRef(initialSnap);
 
   function setRefs(el: SheetRef | null) {
     innerRef.current = el;
@@ -32,6 +33,13 @@ export const SnapSheet = forwardRef<SheetRef, Props>(function SnapSheet(
     return () => clearTimeout(t);
   }, [initialSnap]);
 
+  useEffect(() => {
+    let frame = 0;
+    const resize = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(() => innerRef.current?.snapTo(snapIndex.current)); };
+    window.addEventListener('resize', resize);
+    return () => { window.removeEventListener('resize', resize); cancelAnimationFrame(frame); };
+  }, []);
+
   return (
     <Sheet
       ref={setRefs}
@@ -40,8 +48,8 @@ export const SnapSheet = forwardRef<SheetRef, Props>(function SnapSheet(
       disableDismiss
       snapPoints={snapPoints}
       initialSnap={initialSnap}
-      detent="default"
-      onSnap={onSnap}
+      detent="full"
+      onSnap={i => { snapIndex.current = i; onSnap?.(i); }}
       mountPoint={mountPoint}
       // 항상 열린 시트라 전역 스크롤락이 늘 켜져 위에 뜨는 모달(필터·지역)의 스크롤을 막음 → 해제.
       // 배경(App)은 position:fixed라 락이 애초에 불필요.
@@ -50,9 +58,9 @@ export const SnapSheet = forwardRef<SheetRef, Props>(function SnapSheet(
     >
       <Sheet.Container
         // 앱 홈 바텀시트: 상단 radius lg(20) + 옅은 그림자
-        style={{ borderRadius: `${radius.lg}px ${radius.lg}px 0 0`, boxShadow: shadow.sheet }}
+        style={{ height: '100%', maxHeight: '100%', borderRadius: `${radius.xl}px ${radius.xl}px 0 0`, boxShadow: shadow.sheet }}
       >
-        <Sheet.Header />
+        <Sheet.Header><div className="list-sheet-handle"><span /></div></Sheet.Header>
         <Sheet.Content>{children}</Sheet.Content>
       </Sheet.Container>
     </Sheet>

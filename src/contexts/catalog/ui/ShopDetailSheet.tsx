@@ -1,39 +1,11 @@
 import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { useShopDetail } from "./hooks/useShopDetail";
-import { thumbW, FALLBACK_IMAGE, onImgError } from "../../../shared/ui/image";
+import { feedImage, onImgError } from "../../../shared/ui/image";
 import { usecases } from "../../../app/composition-root";
-import { color, radius, shadow, button } from "../../../shared/ui/tokens";
-import type { ReservationRoute } from "../domain/shop";
+import { Icon } from "../../../shared/ui/Icon";
+import type { ReservationRoute, ShopDetail } from "../domain/shop";
 import { useNaverCta } from "../../../shared/platform/use-naver-cta";
-
-// 대표(최저) 실서비스가 — add-on/잡메뉴(추가·기장·옵션 등) 제외하고 가장 싼 메뉴
-const PRICE_NOISE = /제거|오프|off|리무브|리페어|음료|추가|옵션|보강|보수|파라핀|영양제|드릴|보호|글루|기장|길이|증모|붙임|별도/;
-function repMenu(menus: { name: string; price: number | null }[]): { name: string; price: number } | null {
-  let best: { name: string; price: number } | null = null;
-  for (const m of menus) {
-    const p = m.price;
-    if (!p || p < 5000 || p > 2000000) continue;
-    if (PRICE_NOISE.test(m.name || "")) continue;
-    if (!best || p < best.price) best = { name: m.name, price: p };
-  }
-  return best;
-}
-
-function ymd(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-function todayYmd(): string {
-  return ymd(new Date());
-}
-function tomorrowYmd(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return ymd(d);
-}
-function nowHHMM(): string {
-  const d = new Date();
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
 
 type Props = {
   shopId: string;
@@ -41,453 +13,677 @@ type Props = {
   onReserveClick: (
     shopId: string,
     route: ReservationRoute,
-    meta?: { isPartner: boolean; slot?: { date: string; time: string }; district?: string; category?: string },
+    meta?: {
+      isPartner: boolean;
+      slot?: { date: string; time: string };
+      district?: string;
+      category?: string;
+    },
   ) => void;
 };
+const tabs = [
+  ["home", "홈"],
+  ["menu", "가격"],
+  ["availability", "예약"],
+  ["review", "리뷰"],
+] as const;
+type Tab = (typeof tabs)[number][0];
 
-/** 샵 상세 — 전체화면 시트. 이미지/정보/메뉴/이벤트/예약루트. */
 export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
   const { detail, loading } = useShopDetail(shopId);
-  const [slots, setSlots] = useState<string[] | null>(null);
-  const [todaySlots, setTodaySlots] = useState<string[] | null>(null);
+  const [active, setActive] = useState<Tab>("home");
   const [showAllMenus, setShowAllMenus] = useState(false);
   const [showAllReviews, setShowAllReviews] = useState(false);
+  const scroll = useRef<HTMLDivElement>(null);
+  const sections = useRef<Partial<Record<Tab, HTMLElement | null>>>({});
   const viewed = useRef<string | null>(null);
+  const galleryTracked = useRef(false);
   useEffect(() => {
     if (!detail || detail.id !== shopId || viewed.current === shopId) return;
     viewed.current = shopId;
-    usecases.analytics.track({ event: "detail_view", shopId, isPartner: detail.isPartner, shopCategory: detail.category, shopDistrict: detail.gu });
+    usecases.analytics.track({
+      event: "detail_view",
+      shopId,
+      isPartner: detail.isPartner,
+      shopCategory: detail.category,
+      shopDistrict: detail.gu,
+    });
   }, [detail, shopId]);
-
-  useEffect(() => {
-    let alive = true;
-    usecases.reservation.getShopSlots(shopId, tomorrowYmd()).then((s) => {
-      if (alive) setSlots(s);
-    });
-    // 오늘 남은 예약 시간 (지난 시간은 제외)
-    usecases.reservation.getShopSlots(shopId, todayYmd()).then((s) => {
-      if (alive) {
-        const now = nowHHMM();
-        setTodaySlots(s.map((t) => t.slice(0, 5)).filter((t) => t >= now));
-      }
-    });
-    return () => {
-      alive = false;
-    };
-  }, [shopId]);
-
-  // 상세 체류시간(초) — 닫힐 때 기록. 포폴/가격 보는 시간 = 관심도 신호.
   useEffect(() => {
     const t0 = Date.now();
-    return () => {
-      usecases.analytics.track({ event: "detail_close", shopId, ms: Date.now() - t0 });
-    };
+    return () =>
+      usecases.analytics.track({
+        event: "detail_close",
+        shopId,
+        ms: Date.now() - t0,
+      });
   }, [shopId]);
-
-  // 포폴 사진 넘겨봄 (1회만) / 메뉴 더보기 — 상세 내부 행동
-  const galleryTracked = useRef(false);
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  }, [onClose]);
+  function jump(tab: Tab) {
+    setActive(tab);
+    scroll.current?.scrollTo({
+      top: tab === "home" ? 0 : (sections.current[tab]?.offsetTop ?? 0) - 42,
+      behavior: "smooth",
+    });
+    if (tab === "menu" || tab === "review")
+      usecases.analytics.track({
+        event: tab === "menu" ? "menu_view" : "review_view",
+        shopId,
+        isPartner: detail?.isPartner,
+      });
+  }
   function onGallerySwipe() {
     if (galleryTracked.current) return;
     galleryTracked.current = true;
     usecases.analytics.track({ event: "gallery_view", shopId });
   }
-
   return (
     <div
-      style={{
-        position: "absolute",
-        inset: 0,
-        zIndex: 40,
-        background: color.white,
-        color: color.text.strong,
-        overflowY: "auto",
-        WebkitOverflowScrolling: "touch",
-      }}
+      className="shop-detail"
+      role="dialog"
+      aria-modal="true"
+      aria-label={detail?.name ?? "샵 상세"}
     >
-      <button
-        onClick={onClose}
-        style={{
-          position: "fixed",
-          top: 12,
-          left: 12,
-          zIndex: 41,
-          width: 40,
-          height: 40,
-          borderRadius: 20,
-          border: `1px solid ${color.gray[300]}`,
-          background: color.white,
-          boxShadow: shadow.xs,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: 0,
-          cursor: "pointer",
-        }}
-        aria-label="뒤로"
-      >
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={color.gray[800]} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-          <path d="m15 18-6-6 6-6" />
-        </svg>
-      </button>
-
-      {loading && <div style={{ padding: 40, textAlign: "center", color: color.text.hint, fontSize: 14 }}>불러오는 중…</div>}
-      {!loading && !detail && <div style={{ padding: 40, textAlign: "center", color: color.text.hint, fontSize: 14 }}>정보 없음</div>}
-
-      {detail && (
-        <>
-          {/* 이미지 — 작업 사진 우선(대표 → 가게갤러리 → 손님 리뷰사진), 가격판(menu)은 맨 뒤 */}
-          <Gallery
-            images={[
-              ...new Set(
-                [
-                  detail.images.representative,
-                  ...detail.images.gallery,
-                  ...detail.images.review,
-                  ...detail.images.menu,
-                ].filter(Boolean) as string[],
-              ),
-            ]}
-            onSwipe={onGallerySwipe}
-          />
-
-          <div style={{ padding: "16px 20px 120px" }}>
-            <h2 style={{ fontSize: 24, lineHeight: "32px", letterSpacing: -0.48, fontWeight: 600, margin: 0, color: color.text.strong }}>{detail.name}</h2>
-            <div style={{ display: "flex", gap: 4, marginTop: 8, flexWrap: "wrap" }}>
-              {detail.isPartner && <DBadge tone="partner">샥 파트너</DBadge>}
-              {detail.hasEvent && <DBadge tone="event">{detail.eventPrice ?? "할인"}</DBadge>}
-              <DBadge tone="price">{detail.priceTier}</DBadge>
-            </div>
-            {/* 평점·지역·시술 한 줄로 합침 (정보 정리) */}
-            <div style={{ fontSize: 14, color: color.text.subtle, marginTop: 8 }}>
-              리뷰 {detail.reviewTotal.toLocaleString()} · {detail.gu}
-              {detail.services.length > 0 && ` · ${detail.services.slice(0, 3).join("·")}`}
-            </div>
-
-            {/* 파일럿(파트너) 전용 배너 — 사장님 확인된 할인 + 빈 시간 (수동 큐레이션) */}
-            {detail.pilotCoupon && (
-              <div style={{ background: color.brand.tint, border: `1px solid ${color.primary[300]}`, borderRadius: radius.md, padding: "12px 14px", marginTop: 12 }}>
-                <span style={{ display: "inline-block", background: color.primary[500], color: color.white, fontSize: 12, fontWeight: 600, padding: "2px 8px", borderRadius: 4, marginBottom: 8 }}>
-                  샥 파트너 혜택
-                </span>
-                <div style={{ fontSize: 14, lineHeight: "20px", color: color.primary[700], fontWeight: 600 }}>{detail.pilotCoupon}</div>
-                {detail.pilotHours && (
-                  <div style={{ fontSize: 12, color: color.primary[600], marginTop: 4, fontWeight: 500 }}>빈자리: {detail.pilotHours}</div>
-                )}
-              </div>
-            )}
-
-            {/* 할인/이벤트 박스 (스크랩) — 파일럿 배너 없을 때만 */}
-            {!detail.pilotCoupon && detail.hasEvent && detail.eventDesc && (
-              <div style={{ background: color.primary[50], borderRadius: radius.md, padding: "12px 14px", marginTop: 12 }}>
-                <span style={{ display: "inline-block", background: color.primary[500], color: color.white, fontSize: 12, fontWeight: 600, padding: "2px 8px", borderRadius: 4, marginBottom: 8 }}>
-                  {detail.eventPrice ?? "할인"}
-                </span>
-                <div style={{ fontSize: 14, lineHeight: "20px", color: color.primary[700], fontWeight: 500, whiteSpace: "pre-line" }}>{detail.eventDesc}</div>
-              </div>
-            )}
-
-            {/* ⚡ 오늘 바로 예약 — 당일예약이 핵심이라 가장 크게(솔리드 핑크) */}
-            {todaySlots && todaySlots.length > 0 && (
-              <div style={{ marginTop: 16, padding: 16, borderRadius: radius.md, background: color.primary[500], color: color.white }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <span style={{ fontSize: 16, fontWeight: 600 }}>오늘 바로 예약</span>
-                  <span style={{ fontSize: 12, opacity: 0.85, fontWeight: 500 }}>지금 남은 시간</span>
-                </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
-                  {todaySlots.slice(0, 18).map((t) => (
-                    <a
-                      key={t}
-                      href={detail.reservationRoutes.find((r) => r.type === "naver")?.value || "#"}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={() => onReserveClick(detail.id, { type: "naver", label: "네이버로 예약", value: "" }, { slot: { date: todayYmd(), time: t }, isPartner: detail.isPartner, district: detail.gu, category: detail.category })}
-                      style={{ height: 36, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: radius.full, background: color.white, color: color.primary[500], fontSize: 14, fontWeight: 600, textDecoration: "none" }}
-                    >
-                      {t}
-                    </a>
-                  ))}
-                </div>
-                <div style={{ fontSize: 12, opacity: 0.85, marginTop: 12 }}>시간을 누르면 네이버 예약으로 이동해요.</div>
-              </div>
-            )}
-
-            {/* 내일도 예약 가능 (보조, 컴팩트) */}
-            {slots && slots.length > 0 && (
-              <SlotsCard slots={slots}
-                naverUrl={detail.reservationRoutes.find((r) => r.type === "naver")?.value}
-                onPick={(t) => detail.reservationRoutes.some(r => r.type === "naver" && r.value) && onReserveClick(detail.id, { type: "naver", label: "네이버로 예약", value: "" }, { slot: { date: tomorrowYmd(), time: t }, isPartner: detail.isPartner, district: detail.gu, category: detail.category })} />
-            )}
-
-            {/* 메뉴 · 가격 — 예약 시간 다음. 최저가가 무슨 메뉴인지 강조(필터 오해 방지) */}
-            {detail.menus.length > 0 && (() => {
-              const rep = repMenu(detail.menus);
-              return (
-                <Section title="메뉴 · 가격">
-                  {rep && (
-                    <div style={{ background: color.primary[50], borderRadius: radius.sm, padding: "10px 12px", marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{ fontSize: 13, fontWeight: 500, color: color.primary[700] }}>최저 · {rep.name}</span>
-                      <span style={{ fontSize: 16, fontWeight: 600, color: color.primary[500] }}>{rep.price.toLocaleString()}원~</span>
-                    </div>
-                  )}
-                  {detail.menus.slice(0, showAllMenus ? 30 : 5).map((m, i) => {
-                    const isRep = !!rep && m.name === rep.name && m.price === rep.price;
-                    return (
-                      <div
-                        key={i}
-                        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "10px 0", fontSize: 14, color: color.text.base, borderTop: i === 0 ? "none" : `1px solid ${color.line.divider}` }}
-                      >
-                        <span>
-                          {isRep && <span style={{ color: color.primary[500], fontWeight: 600, marginRight: 4 }}>최저가</span>}
-                          {m.recommend && <span style={{ color: color.primary[500], fontWeight: 500, marginRight: 4 }}>추천</span>}
-                          {m.name}
-                        </span>
-                        <span style={{ fontWeight: isRep ? 600 : 500, color: isRep ? color.primary[500] : color.text.strong, flexShrink: 0 }}>
-                          {m.price ? `${m.price.toLocaleString()}원` : "—"}
-                        </span>
-                      </div>
-                    );
-                  })}
-                  {!showAllMenus && detail.menus.length > 5 && (
-                    <button onClick={() => { setShowAllMenus(true); usecases.analytics.track({ event: "menu_view", shopId }); }} style={moreBtnStyle}>
-                      메뉴 {detail.menus.length - 5}개 더보기
-                    </button>
-                  )}
-                </Section>
-              );
-            })()}
-
-            {/* 기본 정보 */}
-            <Section title="정보">
-              <Info label="주소" value={detail.roadAddress} />
-              {todaySlots !== null && todaySlots.length === 0 && (
-                <Info label="오늘 예약" value="오늘은 예약 마감이에요" />
-              )}
-              <Info label="전화" value={detail.phone} />
-              {detail.instagram && (
-                <Info
-                  label="인스타"
-                  value={
-                    <a href={detail.instagram} target="_blank" rel="noreferrer" style={{ color: color.primary[500] }}>
-                      {detail.instagram.replace("https://www.instagram.com/", "@").split("?")[0]}
-                    </a>
-                  }
-                />
-              )}
-            </Section>
-
-            {/* 리뷰 — 2개만, 더보기로 펼침 */}
-            {detail.reviews.length > 0 && (
-              <Section title={`방문자 리뷰 ${detail.reviewTotal.toLocaleString()}`}>
-                {detail.reviews.slice(0, showAllReviews ? 30 : 2).map((r, i) => (
-                  <div key={i} style={{ padding: "10px 12px", marginTop: i ? 8 : 0, borderRadius: radius.sm, background: color.surface.muted }}>
-                    <div style={{ fontSize: 14, lineHeight: "20px", color: color.text.muted }}>{r.body}</div>
-                    {r.keywords.length > 0 && (
-                      <div style={{ marginTop: 4, display: "flex", flexWrap: "wrap", gap: 4 }}>
-                        {r.keywords.slice(0, 4).map((k) => (
-                          <span key={k} style={{ fontSize: 11, color: color.text.subtle, background: color.white, borderRadius: 4, padding: "1px 6px" }}>
-                            {k}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    {r.visited && <div style={{ fontSize: 11, color: color.text.faint, marginTop: 4 }}>{r.visited}</div>}
-                  </div>
-                ))}
-                {!showAllReviews && detail.reviews.length > 2 && (
-                  <button onClick={() => { setShowAllReviews(true); usecases.analytics.track({ event: "review_view", shopId, isPartner: detail.isPartner }); }} style={moreBtnStyle}>리뷰 더보기</button>
-                )}
-              </Section>
-            )}
-          </div>
-
-          {/* 예약하기 (고정 하단) */}
-          <ReserveBar shopId={detail.id} isPartner={detail.isPartner} routes={detail.reservationRoutes} onReserve={(r) => onReserveClick(detail.id, r, { isPartner: detail.isPartner, district: detail.gu, category: detail.category })} />
-        </>
-      )}
-    </div>
-  );
-}
-
-function Gallery({ images, onSwipe }: { images: string[]; onSwipe?: () => void }) {
-  const [idx, setIdx] = useState(0);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  if (!images.length)
-    return (
-      <img
-        src={FALLBACK_IMAGE}
-        alt=""
-        style={{ width: "100%", height: 300, objectFit: "cover", display: "block", background: color.primary[50] }}
-      />
-    );
-  const shown = images.slice(0, 20);
-  const jump = (i: number) => {
-    const el = scrollRef.current;
-    if (el) el.scrollTo({ left: i * el.clientWidth, behavior: "smooth" });
-  };
-  return (
-    <div>
-      {/* 큰 사진 (스와이프) */}
-      <div style={{ position: "relative" }}>
-        <div
-          ref={scrollRef}
-          onScroll={(e) => {
-            const i = Math.round(e.currentTarget.scrollLeft / e.currentTarget.clientWidth);
-            setIdx(i);
-            if (i > 0) onSwipe?.();
-          }}
-          style={{ display: "flex", overflowX: "auto", scrollSnapType: "x mandatory", scrollbarWidth: "none" }}
-        >
-          {shown.map((src, i) => (
-            <img
-              key={i}
-              src={thumbW(src)}
-              onError={onImgError}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              style={{ width: "100%", height: 300, objectFit: "cover", flexShrink: 0, scrollSnapAlign: "start" }}
-            />
-          ))}
+      <header className="detail-header">
+        <button className="icon-button" aria-label="뒤로" onClick={onClose}>
+          <Icon name="back" size={26} />
+        </button>
+        <div className="detail-header-actions">
+          <a
+            href="https://app.themuselab.kr/favorites"
+            className="icon-button shop-favorite"
+            aria-label="즐겨찾기 — 앱에서 열기"
+          >
+            <Icon name="star" size={24} />
+          </a>
+          <button
+            className="icon-button"
+            aria-label="상세 닫기"
+            onClick={onClose}
+          >
+            <Icon name="close" size={24} />
+          </button>
         </div>
-        {shown.length > 1 && (
-          <div style={{ position: "absolute", right: 12, bottom: 12, background: "rgba(0,0,0,.55)", color: color.white, fontSize: 12, fontWeight: 500, borderRadius: radius.full, padding: "3px 10px" }}>
-            {idx + 1} / {shown.length}
+      </header>
+      <div
+        ref={scroll}
+        className="detail-scroll"
+        onScroll={() => {
+          const y = (scroll.current?.scrollTop ?? 0) + 65;
+          const found = [...tabs]
+            .reverse()
+            .find(
+              ([key]) =>
+                key !== "home" &&
+                sections.current[key] &&
+                sections.current[key]!.offsetTop <= y,
+            );
+          setActive(found?.[0] ?? "home");
+        }}
+      >
+        {loading && (
+          <div className="detail-empty" role="status">
+            불러오는 중…
           </div>
         )}
-      </div>
-      {/* 썸네일 스트립 — 작업 사진 한눈에 훑기, 탭하면 크게 */}
-      {shown.length > 1 && (
-        <div style={{ display: "flex", gap: 4, overflowX: "auto", padding: "8px 20px 4px", scrollbarWidth: "none" }}>
-          {shown.map((src, i) => (
-            <img
-              key={i}
-              src={thumbW(src)}
-              onError={onImgError}
-              alt=""
-              loading="lazy"
-              onClick={() => jump(i)}
-              style={{
-                width: 58,
-                height: 58,
-                objectFit: "cover",
-                borderRadius: 6,
-                flexShrink: 0,
-                cursor: "pointer",
-                border: i === idx ? `2px solid ${color.primary[500]}` : "2px solid transparent",
-                opacity: i === idx ? 1 : 0.65,
-              }}
+        {!loading && !detail && (
+          <div className="detail-empty">
+            샵 정보를 불러올 수 없어요.
+            <button onClick={onClose}>지도로 돌아가기</button>
+          </div>
+        )}
+        {detail && (
+          <>
+            <div className="detail-title">
+              <div>
+                <h1>{detail.name}</h1>
+                <span>{detail.category}샵</span>
+              </div>
+              <p>
+                {detail.gu}
+                <span className="meta-dot"> • </span>리뷰{" "}
+                {detail.reviewTotal.toLocaleString()}
+                {detail.isPartner && (
+                  <span className="partner-badge">샥 파트너</span>
+                )}
+              </p>
+            </div>
+            <Gallery
+              images={[
+                ...new Set(
+                  [
+                    detail.images.representative,
+                    ...detail.images.gallery,
+                    ...detail.images.review,
+                    ...detail.images.menu,
+                  ].filter(Boolean) as string[],
+                ),
+              ]}
+              onSwipe={onGallerySwipe}
             />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-const moreBtnStyle: React.CSSProperties = {
-  width: "100%", marginTop: 10, height: 40, border: `1px solid ${color.line.base}`, borderRadius: radius.sm,
-  background: color.white, color: color.text.muted, fontSize: 14, fontWeight: 500, cursor: "pointer", fontFamily: "inherit",
-};
-
-// 홈 시안 태그 톤: 이벤트 = 연분홍 + 핑크, 가격대 = 회색, 파트너 = 앱 브랜드 칩(연분홍 + primary-300 테두리)
-const DTONES = {
-  partner: { bg: color.brand.tint, color: color.primary[500], border: color.primary[300] },
-  event: { bg: color.primary[50], color: color.primary[500], border: "transparent" },
-  price: { bg: color.gray[100], color: color.gray[700], border: "transparent" },
-} as const;
-function DBadge({ tone, children }: { tone: keyof typeof DTONES; children: React.ReactNode }) {
-  const c = DTONES[tone];
-  return <span style={{ fontSize: 12, lineHeight: "16px", fontWeight: 500, color: c.color, background: c.bg, border: `1px solid ${c.border}`, borderRadius: 4, padding: "2px 7px" }}>{children}</span>;
-}
-
-function SlotsCard({ slots, naverUrl, onPick }: { slots: string[]; naverUrl?: string; onPick: (time: string) => void }) {
-  return (
-    <div style={{ marginTop: 12, padding: "12px 14px", borderRadius: radius.md, background: color.gray[50], border: `1px solid ${color.line.base}` }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 14, fontWeight: 600, color: color.text.strong }}>내일도 예약 가능</span>
-        <span style={{ fontSize: 11, color: color.text.faint, fontWeight: 500 }}>매시간 갱신</span>
-      </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 9 }}>
-        {slots.slice(0, 12).map((t) => (
-          <a
-            key={t}
-            href={naverUrl || "#"}
-            target="_blank"
-            rel="noreferrer"
-            onClick={() => onPick(t)}
-            style={{ height: 30, display: "inline-flex", alignItems: "center", padding: "0 12px", borderRadius: radius.full, background: color.white, color: color.gray[700], border: `1px solid ${color.gray[300]}`, fontSize: 13, fontWeight: 500, textDecoration: "none" }}
-          >
-            {t}
-          </a>
-        ))}
-        {slots.length > 12 && <span style={{ fontSize: 12, color: color.text.faint, padding: "6px 2px" }}>+{slots.length - 12}</span>}
-      </div>
-    </div>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div style={{ marginTop: 28 }}>
-      <h3 style={{ fontSize: 18, lineHeight: "24px", fontWeight: 600, margin: "0 0 12px", color: color.text.strong }}>{title}</h3>
-      {children}
-    </div>
-  );
-}
-
-function Info({ label, value }: { label: string; value: React.ReactNode }) {
-  if (!value) return null;
-  return (
-    <div style={{ display: "flex", gap: 8, padding: "4px 0", fontSize: 14, lineHeight: "20px" }}>
-      <span style={{ color: color.text.hint, flexShrink: 0, width: 60 }}>{label}</span>
-      <span style={{ color: color.text.base }}>{value}</span>
-    </div>
-  );
-}
-
-// 네이버 톡톡은 제외 — 예약(네이버 예약) 중심으로 정확하게
-const ROUTE_PRIORITY: ReservationRoute["type"][] = ["naver", "kakao", "instagram", "phone"];
-
-function ReserveBar({ shopId, isPartner, routes: allRoutes, onReserve }: { shopId: string; isPartner: boolean; routes: ReservationRoute[]; onReserve: (r: ReservationRoute) => void }) {
-  const routes = allRoutes.filter((r) => r.type !== "talktalk");
-  const sorted = [...routes].sort((a, b) => ROUTE_PRIORITY.indexOf(a.type) - ROUTE_PRIORITY.indexOf(b.type));
-  const primary = sorted[0];
-  const cta = useNaverCta(shopId, isPartner, primary?.type === "naver" && !!primary.value);
-  if (!routes.length)
-    return (
-      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, padding: 16, background: color.white, borderTop: `1px solid ${color.line.divider}`, textAlign: "center", color: color.text.faint, fontSize: 14, zIndex: 41 }}>
-        예약 정보 없음
-      </div>
-    );
-  const others = sorted.slice(1, 4);
-  const href = (r: ReservationRoute) => (r.type === "phone" ? `tel:${r.value}` : r.value);
-  return (
-    <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, padding: "12px 20px 16px", background: color.white, borderTop: `1px solid ${color.line.divider}`, zIndex: 41 }}>
-      {others.length > 0 && (
-        <div style={{ display: "flex", gap: 6, marginBottom: 10, justifyContent: "center" }}>
-          {others.map((r) => (
-            <a
-              key={r.type}
-              href={href(r)}
-              target={r.type === "phone" ? undefined : "_blank"}
-              rel="noreferrer"
-              onClick={() => onReserve(r)}
-              style={{ height: 33, display: "inline-flex", alignItems: "center", padding: "0 12px", borderRadius: radius.full, border: `1px solid ${color.gray[300]}`, color: color.gray[800], fontSize: 14, fontWeight: 500, textDecoration: "none" }}
+            <nav className="detail-tabs" role="tablist" aria-label="샵 상세">
+              {tabs.map(([key, label]) => (
+                <button
+                  role="tab"
+                  aria-selected={active === key}
+                  aria-controls={"shop-section-" + key}
+                  key={key}
+                  onClick={() => jump(key)}
+                >
+                  {label}
+                </button>
+              ))}
+            </nav>
+            <section
+              id="shop-section-home"
+              className="detail-home"
+              ref={(e) => {
+                sections.current.home = e;
+              }}
             >
-              {r.label}
-            </a>
+              {(detail.pilotCoupon || detail.eventDesc) && (
+                <div className="detail-event">
+                  <img
+                    src={import.meta.env.BASE_URL + "map/chip-discount.png"}
+                    width={18}
+                    height={18}
+                    alt=""
+                  />
+                  <span>{detail.pilotCoupon || detail.eventDesc}</span>
+                </div>
+              )}
+              {detail.roadAddress && (
+                <Info icon="arrow">{detail.roadAddress}</Info>
+              )}
+              <BusinessHours hours={detail.businessHours} />
+              {detail.phone && (
+                <Info icon="phone">
+                  <a
+                    href={"tel:" + detail.phone}
+                    onClick={() =>
+                      onReserveClick(
+                        detail.id,
+                        {
+                          type: "phone",
+                          label: "전화예약",
+                          value: detail.phone!,
+                        },
+                        {
+                          isPartner: detail.isPartner,
+                          district: detail.gu,
+                          category: detail.category,
+                        },
+                      )
+                    }
+                  >
+                    {detail.phone}
+                  </a>
+                </Info>
+              )}
+              {detail.instagram && (
+                <Info icon="instagram">
+                  <a href={detail.instagram} target="_blank" rel="noreferrer">
+                    {"@" +
+                      detail.instagram
+                        .replace(/^https?:\/\/(www\.)?instagram\.com\//, "")
+                        .split(/[/?]/)[0]}
+                  </a>
+                </Info>
+              )}
+              {detail.reservationRoutes
+                .filter((r) => r.type === "kakao" && r.value)
+                .map((r) => (
+                  <Info key={r.type}>
+                    <a
+                      href={r.value}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={() =>
+                        onReserveClick(detail.id, r, {
+                          isPartner: detail.isPartner,
+                          district: detail.gu,
+                          category: detail.category,
+                        })
+                      }
+                    >
+                      {r.label}
+                    </a>
+                  </Info>
+                ))}
+              {detail.pilotHours && (
+                <p className="detail-note">{detail.pilotHours}</p>
+              )}
+              {detail.introduction && (
+                <div className="detail-introduction">
+                  <h2>소개</h2>
+                  <p>{detail.introduction}</p>
+                </div>
+              )}
+            </section>
+            <section
+              id="shop-section-menu"
+              className="detail-section"
+              ref={(e) => {
+                sections.current.menu = e;
+              }}
+            >
+              <h2>가격</h2>
+              {detail.menus.length ? (
+                detail.menus
+                  .slice(0, showAllMenus ? undefined : 5)
+                  .map((m, i) => (
+                    <div className="detail-menu" key={i}>
+                      <span>
+                        {m.recommend && <small>추천 </small>}
+                        {m.name}
+                      </span>
+                      <strong>
+                        {m.price
+                          ? m.price.toLocaleString() + "원"
+                          : "가격 문의"}
+                      </strong>
+                    </div>
+                  ))
+              ) : (
+                <p className="detail-note">등록된 가격 정보가 없어요.</p>
+              )}
+              {detail.menus.length > 5 && (
+                <button
+                  className="detail-more"
+                  onClick={() => {
+                    setShowAllMenus((v) => !v);
+                    usecases.analytics.track({ event: "menu_view", shopId });
+                  }}
+                >
+                  {showAllMenus ? "접기" : "가격 더보기"}
+                </button>
+              )}
+            </section>
+            <section
+              id="shop-section-availability"
+              className="detail-section"
+              ref={(e) => {
+                sections.current.availability = e;
+              }}
+            >
+              <Availability detail={detail} onReserveClick={onReserveClick} />
+            </section>
+            <section
+              id="shop-section-review"
+              className="detail-section"
+              ref={(e) => {
+                sections.current.review = e;
+              }}
+            >
+              <h2>
+                방문자 리뷰 <span>{detail.reviewTotal.toLocaleString()}</span>
+              </h2>
+              {detail.reviews.length ? (
+                detail.reviews
+                  .slice(0, showAllReviews ? undefined : 2)
+                  .map((r, i) => (
+                    <article className="detail-review" key={i}>
+                      <p>{r.body}</p>
+                      <div className="review-keywords">
+                        {r.keywords.slice(0, 5).map((k) => (
+                          <span key={k}>{k}</span>
+                        ))}
+                      </div>
+                      {r.visited && <small>{r.visited}</small>}
+                    </article>
+                  ))
+              ) : (
+                <p className="detail-note">아직 등록된 리뷰가 없어요.</p>
+              )}
+              {detail.reviews.length > 2 && (
+                <button
+                  className="detail-more"
+                  onClick={() => {
+                    setShowAllReviews((v) => !v);
+                    usecases.analytics.track({
+                      event: "review_view",
+                      shopId,
+                      isPartner: detail.isPartner,
+                    });
+                  }}
+                >
+                  {showAllReviews ? "접기" : "리뷰 더보기"}
+                </button>
+              )}
+            </section>
+          </>
+        )}
+      </div>
+      {detail && (
+        <ReserveBar
+          shopId={detail.id}
+          isPartner={detail.isPartner}
+          routes={detail.reservationRoutes}
+          onReserve={(r) =>
+            onReserveClick(detail.id, r, {
+              isPartner: detail.isPartner,
+              district: detail.gu,
+              category: detail.category,
+            })
+          }
+        />
+      )}
+    </div>
+  );
+}
+
+function Gallery({
+  images,
+  onSwipe,
+}: {
+  images: string[];
+  onSwipe: () => void;
+}) {
+  return (
+    <div
+      className="detail-gallery"
+      onScroll={(e) => {
+        if (e.currentTarget.scrollLeft > 12) onSwipe();
+      }}
+      aria-label="샵 사진"
+    >
+      {images.length
+        ? images
+            .slice(0, 20)
+            .map((src, i) => (
+              <img
+                key={src + i}
+                src={feedImage(src)}
+                onError={onImgError}
+                alt={"샵 사진 " + (i + 1)}
+                loading="lazy"
+                decoding="async"
+              />
+            ))
+        : Array.from({ length: 3 }, (_, i) => (
+            <span className="detail-photo-placeholder" key={i} />
           ))}
+    </div>
+  );
+}
+function Info({
+  icon = "arrow",
+  children,
+}: {
+  icon?: "arrow" | "phone" | "clock" | "instagram";
+  children: ReactNode;
+}) {
+  return (
+    <div className="detail-info">
+      <Icon name={icon} size={16} />
+      <div>{children}</div>
+    </div>
+  );
+}
+function BusinessHours({ hours }: { hours: ShopDetail["businessHours"] }) {
+  if (!hours?.length) return null;
+  const now = new Date();
+  const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
+  const entry = (day: string) =>
+    hours.find((h) => h.day === day) ?? hours.find((h) => h.day === "매일");
+  const today = entry(weekdays[now.getDay()]);
+  const minute = (t: string) =>
+    Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+  const clock = now.getHours() * 60 + now.getMinutes();
+  const open = today?.start && today.end ? minute(today.start) : null;
+  const end = today?.end
+    ? minute(today.end) + (open != null && minute(today.end) <= open ? 1440 : 0)
+    : null;
+  const pause = today?.breaks?.find(
+    (b) => clock >= minute(b.start) && clock < minute(b.end),
+  );
+  const isOpen =
+    open != null && end != null && clock >= open && clock < end && !pause;
+  const label = !today
+    ? "영업시간"
+    : open == null
+      ? "휴무"
+      : clock < open
+        ? "영업 전"
+        : pause
+          ? "브레이크타임"
+          : isOpen
+            ? "영업 중"
+            : "영업 종료";
+  const note = isOpen
+    ? `${today?.end}에 영업 종료`
+    : open != null && clock < open
+      ? `${today?.start}에 영업 시작`
+      : pause
+        ? `${pause.end}에 영업 재개`
+        : null;
+  return (
+    <Info icon="clock">
+      <details className="business-hours">
+        <summary>
+          <span style={{ color: isOpen ? "#0f9d58" : undefined }}>{label}</span>
+          {note && ` · ${note}`} <Icon name="down" size={14} />
+        </summary>
+        <div>
+          {["월", "화", "수", "목", "금", "토", "일"].map((day) => {
+            const h = entry(day);
+            return (
+              <p key={day}>
+                <span>{day}</span>
+                <span>
+                  {h?.start && h.end ? `${h.start}–${h.end}` : "휴무"}
+                </span>
+              </p>
+            );
+          })}
+        </div>
+      </details>
+    </Info>
+  );
+}
+function Availability({
+  detail,
+  onReserveClick,
+}: {
+  detail: ShopDetail;
+  onReserveClick: Props["onReserveClick"];
+}) {
+  const [day, setDay] = useState(0);
+  const [days] = useState(() =>
+    Array.from({ length: 3 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() + i);
+      return {
+        date:
+          d.getFullYear() +
+          "-" +
+          String(d.getMonth() + 1).padStart(2, "0") +
+          "-" +
+          String(d.getDate()).padStart(2, "0"),
+        label: ["오늘", "내일", "모레"][i],
+        weekday: ["일", "월", "화", "수", "목", "금", "토"][d.getDay()],
+      };
+    }),
+  );
+  const [slots, setSlots] = useState<(string[] | null)[]>([null, null, null]);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    Promise.all(
+      days.map((d) => usecases.reservation.getShopSlots(detail.id, d.date)),
+    )
+      .then((rows) => {
+        const now = new Date();
+        const cut =
+          String(now.getHours()).padStart(2, "0") +
+          ":" +
+          String(now.getMinutes()).padStart(2, "0");
+        if (alive)
+          setSlots(
+            rows.map((r, i) =>
+              [
+                ...new Set(
+                  r
+                    .map((t) => t.slice(0, 5))
+                    .filter((t) => i !== 0 || t >= cut),
+                ),
+              ].sort(),
+            ),
+          );
+      })
+      .catch(() => {
+        if (alive) setFailed(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [detail.id, days]);
+  const naver = detail.reservationRoutes.find(
+    (r) => r.type === "naver" && r.value,
+  );
+  const times = slots[day];
+  return (
+    <>
+      <h2>예약 가능 시간</h2>
+      <div className="availability-tabs" role="tablist" aria-label="예약 날짜">
+        {days.map((d, i) => (
+          <button
+            key={d.date}
+            role="tab"
+            aria-selected={day === i}
+            onClick={() => {
+              setDay(i);
+              usecases.analytics.track({
+                event: "slot_list_view",
+                shopId: detail.id,
+                isPartner: detail.isPartner,
+                properties: { day_index: i, slot_count: slots[i]?.length ?? 0 },
+              });
+            }}
+          >
+            {d.label} ({d.weekday})
+            <small>{d.date.slice(5).replace("-", ".")}</small>
+          </button>
+        ))}
+      </div>
+      {failed ? (
+        <p className="availability-empty">예약 시간을 불러오지 못했어요.</p>
+      ) : times === null ? (
+        <p className="availability-empty">예약 시간 확인 중…</p>
+      ) : !times.length ? (
+        <p className="availability-empty">예약이 모두 마감되었어요</p>
+      ) : (
+        <div className="availability-times">
+          {times.map((t) =>
+            naver ? (
+              <a
+                key={t}
+                href={naver.value}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() =>
+                  onReserveClick(detail.id, naver, {
+                    isPartner: detail.isPartner,
+                    district: detail.gu,
+                    category: detail.category,
+                    slot: { date: days[day].date, time: t },
+                  })
+                }
+              >
+                {t}
+              </a>
+            ) : (
+              <span key={t}>{t}</span>
+            ),
+          )}
         </div>
       )}
-      <a
-        href={href(primary)}
-        target={primary.type === "phone" ? undefined : "_blank"}
-        rel="noreferrer"
-        onClick={() => { cta.onInteraction(); onReserve(primary); }}
-        style={{ ...button("primary"), height: 52 }}
-      >
-        {primary.type === "naver" ? (cta.label ?? primary.label) : primary.label}
-      </a>
-    </div>
+      {detail.isPartner && (
+        <a
+          className="slot-alert-link"
+          href={
+            "https://app.themuselab.kr/shop/" + encodeURIComponent(detail.id)
+          }
+        >
+          빈자리 알림받기 <Icon name="arrow" size={16} />
+        </a>
+      )}
+    </>
+  );
+}
+const PRIORITY: ReservationRoute["type"][] = [
+  "naver",
+  "kakao",
+  "instagram",
+  "phone",
+];
+function ReserveBar({
+  shopId,
+  isPartner,
+  routes,
+  onReserve,
+}: {
+  shopId: string;
+  isPartner: boolean;
+  routes: ReservationRoute[];
+  onReserve: (route: ReservationRoute) => void;
+}) {
+  const sorted = routes
+    .filter((r) => r.type !== "talktalk" && r.value)
+    .sort((a, b) => PRIORITY.indexOf(a.type) - PRIORITY.indexOf(b.type));
+  const primary = sorted[0];
+  const cta = useNaverCta(
+    shopId,
+    isPartner,
+    primary?.type === "naver" && !!primary.value,
+  );
+  const secondary =
+    sorted.find((r) => r.type === "instagram" && r !== primary) ||
+    sorted.find((r) => r.type === "phone" && r !== primary);
+  const href = (r: ReservationRoute) =>
+    r.type === "phone" ? "tel:" + r.value.replace(/[^0-9+]/g, "") : r.value;
+  return (
+    <footer className="detail-reserve">
+      {secondary && (
+        <a
+          className="reserve-secondary"
+          href={href(secondary)}
+          target={secondary.type === "phone" ? undefined : "_blank"}
+          rel="noreferrer"
+          onClick={() => onReserve(secondary)}
+        >
+          <Icon
+            name={secondary.type === "instagram" ? "instagram" : "phone"}
+            size={16}
+          />
+          {secondary.type === "instagram" ? "둘러보기" : "전화예약"}
+        </a>
+      )}
+      {primary ? (
+        <a
+          className="reserve-primary"
+          href={href(primary)}
+          target={primary.type === "phone" ? undefined : "_blank"}
+          rel="noreferrer"
+          onClick={() => {
+            cta.onInteraction();
+            onReserve(primary);
+          }}
+        >
+          {primary.type === "naver"
+            ? (cta.label ?? primary.label)
+            : primary.label}
+          <Icon name="arrow" size={18} />
+        </a>
+      ) : (
+        <div className="reserve-unavailable">네이버 예약이 불가한 샵이에요</div>
+      )}
+    </footer>
   );
 }

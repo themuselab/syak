@@ -10,6 +10,8 @@ type Props = {
 export function ActiveFilters({ filter, onChange }: Props) {
   const chips: { label: string; remove: () => void }[] = [];
 
+  if (filter.priceMin != null || filter.priceMax != null) chips.push({ label: `${(filter.priceMin ?? 0) / 10000}~${filter.priceMax == null ? '10+' : filter.priceMax / 10000}만원`, remove: () => onChange({ ...filter, priceMin: undefined, priceMax: undefined }) });
+
   (filter.categories ?? []).forEach((c) =>
     chips.push({ label: c, remove: () => onChange({ ...filter, categories: filter.categories!.filter((x) => x !== c) }) }),
   );

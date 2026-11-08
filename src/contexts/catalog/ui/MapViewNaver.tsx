@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ShopPin } from "../domain/shop";
 import type { Bounds } from "../ports/shop-repository";
 import { color, shadow, FONT_FAMILY } from "../../../shared/ui/tokens";
-import { SEOUL_CENTER, type Coordinate } from "../../../shared/domain/coordinate";
+import { type Coordinate } from "../../../shared/domain/coordinate";
 // 네이버 공식 클러스터링 소스 — ESM으로 정적 import 불가(로드시 naver.maps.Util.ClassExtend 호출).
 // 문자열로 받아 SDK 로드 후 <script>로 평가한다. (loadNaverMaps 참고)
 // 메인 번들에서 빼려고 동적 import(?raw) — SDK 다운로드와 병렬로 받으니 추가 대기 없음.
@@ -22,7 +22,7 @@ const NAVER_AUTH_PARAM = "ncpKeyId";
 
 // 카카오판(레벨)의 역스케일. 카카오 level 5 ≈ 네이버 zoom 15, level 8 ≈ zoom 12.
 const ZOOM_CLOSE = 15; // center 지정 시(가까이)
-const ZOOM_CITY = 12; // 기본(서울 시 전체)
+const ZOOM_CITY = 14; // 기본(서울 시 전체)
 const CLUSTER_MAX_ZOOM = 14; // 이 줌 이상이면 클러스터 해제하고 개별 마커 노출
 
 // ── 핀 비주얼 — 소비자 앱과 같은 PNG 핀 (app/assets/icons/*, app/src/screens/home/components/HomeMap.web.tsx) ──
@@ -30,6 +30,7 @@ const CLUSTER_MAX_ZOOM = 14; // 이 줌 이상이면 클러스터 해제하고 �
 //          선택 = pin-focused(진한 테두리 큰 핀). 크기도 앱과 동일(핀 24×30, 포커스 48×48, 내 위치 32×32).
 const ASSET = `${import.meta.env.BASE_URL}map/`;
 const PIN = {
+  partner: `${ASSET}pin-partner.png`,
   default: `${ASSET}pin-default.png`,
   discount: `${ASSET}pin-discount.png`,
   reservable: `${ASSET}pin-reservable.png`,
@@ -67,6 +68,7 @@ function imgIcon(naver: NaverAny, url: string, w: number, h: number, anchorY: nu
 
 // ── SDK + 클러스터링 로더 (모듈 레벨 프로미스 캐시 → 다중 마운트 중복 로드 방지) ──
 let naverLoadPromise: Promise<void> | null = null;
+const authFailureListeners = new Set<(error: Error) => void>();
 
 function loadNaverMaps(clientId: string): Promise<void> {
   if (naverLoadPromise) return naverLoadPromise;
@@ -100,6 +102,13 @@ function loadNaverMaps(clientId: string): Promise<void> {
       return;
     }
     // 1) SDK 스크립트 주입
+    const previousAuthFailure = w.navermap_authFailure;
+    w.navermap_authFailure = () => {
+      const error = new Error('Map authentication unavailable');
+      authFailureListeners.forEach(listener => listener(error));
+      reject(error);
+      if (typeof previousAuthFailure === 'function') previousAuthFailure();
+    };
     const script = document.createElement("script");
     script.src = `https://oapi.map.naver.com/openapi/v3/maps.js?${NAVER_AUTH_PARAM}=${clientId}`;
     script.async = true;
@@ -124,6 +133,8 @@ function useNaverLoader(clientId: string): { ready: boolean; error: Error | null
   const [error, setError] = useState<Error | null>(null);
   useEffect(() => {
     let alive = true;
+    const authFailed = (error: Error) => { if (alive) { setReady(false); setError(error); } };
+    authFailureListeners.add(authFailed);
     loadNaverMaps(clientId)
       .then(() => {
         if (alive) setReady(true);
@@ -133,6 +144,7 @@ function useNaverLoader(clientId: string): { ready: boolean; error: Error | null
       });
     return () => {
       alive = false;
+      authFailureListeners.delete(authFailed);
     };
   }, [clientId]);
   return { ready, error };
@@ -143,12 +155,13 @@ type Props = {
   highlightedId?: string;
   center?: Coordinate;
   myPos?: Coordinate | null;
+  showDiscount?: boolean;
   showToday?: boolean; // '오늘 예약' 토글 ON일 때만 초록핀, 평소엔 기본(핑크) 핀
   onPinClick: (shop: ShopPin) => void;
   onBoundsChanged?: (b: Bounds) => void;
 };
 
-export function MapViewNaver({ shops, highlightedId, center, myPos, showToday = false, onPinClick, onBoundsChanged }: Props) {
+export function MapViewNaver({ shops, highlightedId, center, myPos, showToday = false, showDiscount = false, onPinClick, onBoundsChanged }: Props) {
   const { ready, error } = useNaverLoader(NAVER_MAP_CLIENT_ID);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -178,12 +191,12 @@ export function MapViewNaver({ shops, highlightedId, center, myPos, showToday = 
     const icons = iconsRef.current;
     icons["__default__"] = imgIcon(naver, PIN.default, PIN_W, PIN_H);
     icons["__event__"] = imgIcon(naver, PIN.discount, PIN_W, PIN_H);
-    icons["__partner__"] = imgIcon(naver, PIN.default, PARTNER_W, PARTNER_H);
+    icons["__partner__"] = imgIcon(naver, PIN.partner, PARTNER_W, PARTNER_H);
     icons["__today__"] = imgIcon(naver, PIN.reservable, PIN_W, PIN_H);
     icons["__focused__"] = imgIcon(naver, PIN.focused, FOCUSED, FOCUSED, FOCUSED_TIP_Y);
     icons["__mydot__"] = imgIcon(naver, PIN.myLocation, 32, 32, 16); // 점형 = 중앙 앵커(앱과 동일)
 
-    const startCenter = center ?? SEOUL_CENTER;
+    const startCenter = center ?? { lat: 37.4979, lng: 127.0276 };
     const map = new naver.maps.Map(el, {
       center: new naver.maps.LatLng(startCenter.lat, startCenter.lng),
       zoom: center ? ZOOM_CLOSE : ZOOM_CITY,
@@ -225,16 +238,18 @@ export function MapViewNaver({ shops, highlightedId, center, myPos, showToday = 
     setMapState(map);
 
     return () => {
-      clustering.setMap(null);
+      // The SDK may have invalidated its internals after a domain/auth error.
+      const detach = (item: NaverAny) => { try { item?.setMap(null); } catch { /* already invalid */ } };
+      detach(clustering);
       clusteringRef.current = null;
-      Object.values(markersById.current).forEach((m) => m.setMap(null));
+      Object.values(markersById.current).forEach(detach);
       markersById.current = {};
       Object.values(partnerById.current).forEach((p) => {
-        p.marker.setMap(null);
-        p.label.setMap(null);
+        detach(p.marker);
+        detach(p.label);
       });
       partnerById.current = {};
-      myDotRef.current?.setMap(null);
+      detach(myDotRef.current);
       myDotRef.current = null;
       mapRef.current = null;
       setMapState(null);
@@ -256,7 +271,7 @@ export function MapViewNaver({ shops, highlightedId, center, myPos, showToday = 
     };
     const listener = naver.maps.Event.addListener(map, "idle", emit);
     emit(); // 최초 1회
-    return () => naver.maps.Event.removeListener(listener);
+    return () => { try { naver.maps.Event.removeListener(listener); } catch { /* SDK invalidated */ } };
   }, [mapState]);
 
   // 마커 diff — shops 바뀌면 사라진 것만 제거 + 새것만 추가 (전체 재생성 X → pan 렉 해결)
@@ -271,9 +286,9 @@ export function MapViewNaver({ shops, highlightedId, center, myPos, showToday = 
 
     const regIcon = (s: ShopPin) => {
       const green = showToday && s.todayOpen; // 토글 ON일 때만 초록
-      return green ? icons["__today__"] : s.hasEvent ? icons["__event__"] : icons["__default__"];
+      return green ? icons["__today__"] : (showDiscount && s.hasEvent) ? icons["__event__"] : icons["__default__"];
     };
-    const regZ = (s: ShopPin) => (showToday && s.todayOpen ? 7 : s.hasEvent ? 6 : 3);
+    const regZ = (s: ShopPin) => (showToday && s.todayOpen ? 7 : (showDiscount && s.hasEvent) ? 6 : 3);
 
     // 클러스터에 현재 마커 집합 반영 후 재생성. (vendored lib의 KVO는 'markers' 변경 시
     // 자동 redraw를 트리거하지 않으므로 직접 _redraw 호출; 실패해도 다음 idle에서 갱신됨)
@@ -355,7 +370,7 @@ export function MapViewNaver({ shops, highlightedId, center, myPos, showToday = 
     return () => {
       cancelled = true;
     };
-  }, [mapState, shops, showToday]);
+  }, [mapState, shops, showToday, showDiscount]);
 
   // '오늘 예약' 토글 변화 시 기존(공유) 마커 색 즉시 갱신 — diff는 새 마커만 추가하므로 별도 동기화
   useEffect(() => {
@@ -366,10 +381,10 @@ export function MapViewNaver({ shops, highlightedId, center, myPos, showToday = 
       const mk = byId[s.id];
       if (!mk) continue;
       const green = showToday && s.todayOpen;
-      mk.setIcon(green ? icons["__today__"] : s.hasEvent ? icons["__event__"] : icons["__default__"]);
-      mk.setZIndex(green ? 7 : s.hasEvent ? 6 : 3);
+      mk.setIcon(green ? icons["__today__"] : (showDiscount && s.hasEvent) ? icons["__event__"] : icons["__default__"]);
+      mk.setZIndex(green ? 7 : (showDiscount && s.hasEvent) ? 6 : 3);
     }
-  }, [showToday, shops]);
+  }, [showToday, showDiscount, shops]);
 
   // 선택 핀 강조 (imperatively 아이콘 교체)
   const prevHl = useRef<string | undefined>(undefined);
@@ -383,7 +398,7 @@ export function MapViewNaver({ shops, highlightedId, center, myPos, showToday = 
       const restore =
         (prev?.isPartner && icons["__partner__"]) ||
         (showToday && prev?.todayOpen && icons["__today__"]) ||
-        (prev?.hasEvent && icons["__event__"]) ||
+        (showDiscount && prev?.hasEvent && icons["__event__"]) ||
         icons["__default__"];
       mk(prevHl.current).setIcon(restore);
       // 강조 해제 시 zIndex도 원복 (카카오판의 잠재 버그 개선)
@@ -394,7 +409,7 @@ export function MapViewNaver({ shops, highlightedId, center, myPos, showToday = 
       mk(highlightedId).setZIndex(10);
     }
     prevHl.current = highlightedId;
-  }, [highlightedId, shops, showToday]);
+  }, [highlightedId, shops, showToday, showDiscount]);
 
   // 내 위치 점 마커 — myPos 변화에 맞춰 생성/이동/제거
   useEffect(() => {
@@ -438,7 +453,7 @@ export function MapViewNaver({ shops, highlightedId, center, myPos, showToday = 
         <button
           onClick={recenter}
           aria-label="현재 위치로"
-          style={{ position: "absolute", left: 16, bottom: "calc(30vh + 14px)", zIndex: 18, width: 40, height: 40, borderRadius: 20, border: `1px solid ${color.gray[300]}`, background: color.white, boxShadow: shadow.xs, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0 }}
+          style={{ position: "absolute", right: 16, bottom: "calc(40dvh + 14px)", zIndex: 18, width: 40, height: 40, borderRadius: 20, border: `1px solid ${color.gray[300]}`, background: color.white, boxShadow: shadow.xs, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0 }}
         >
           {/* 앱 CurrentLocationButton과 동일: 40×40 흰 원 + gray-300 테두리 + LocateFixed(gray-700) */}
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={color.gray[700]} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
