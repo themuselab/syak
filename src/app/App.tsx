@@ -73,7 +73,7 @@ export default function App() {
       usecases.analytics.track({ event: name, properties });
   }), []);
   const { shops, pins, loading, error, filter, setFilter, loadBounds, showShops, searchByName } = useCatalog();
-  const [root, setRoot] = useState<HTMLDivElement | null>(null);
+  const [root, setRoot] = useState<HTMLElement | null>(null);
   const [nameResults, setNameResults] = useState<ShopSummary[]>([]);
   const sheetRef = useRef<SheetRef>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -391,7 +391,8 @@ export default function App() {
 
 
   return (
-    <div ref={setRoot} className="consumer-app" style={{ position: "fixed", inset: 0, fontFamily: FONT_FAMILY, background: color.surface.map, color: color.text.strong }}>
+    <div className="consumer-app" style={{ position: "fixed", inset: 0, fontFamily: FONT_FAMILY, background: color.surface.map, color: color.text.strong }}>
+      <aside ref={setRoot} className="browser-panel">
       <header ref={headerRef} className="home-header">
         <HomeHeader query={query} onQueryChange={setQuery}
           category={filter.categories?.length === 1 ? filter.categories[0] : undefined}
@@ -400,37 +401,14 @@ export default function App() {
           onClear={() => setFilter({ ...filter, categories: undefined, sortBy: "recommend" })} />
       </header>
 
-      {/* 지도 — isolation으로 별도 쌓임 맥락: 네이버 로고·축척(SDK가 큰 z-index를 줌)이 상세·모달 위로 비치지 않게 */}
-      <div style={{ position: "absolute", inset: 0, zIndex: 0, isolation: "isolate" }}>
-        {error ? (
-          <div style={{ padding: 24, paddingTop: 140, color: color.status.error, fontSize: 14 }}>데이터 로드 실패: {error}</div>
-        ) : (
-          <MapBoundary><MapView shops={mapShops} highlightedId={highlightId} center={mapCenter} myPos={myPos} showToday={chip === "today"} showDiscount={chip === "event"} onPinClick={onPinClick} onBoundsChanged={onBoundsChanged} /></MapBoundary>
-        )}
-      </div>
-
-      {/* 앱으로 보기 (지도 우하단) — 설치 링크: iPhone·iPad·PC는 App Store, 안드로이드는 Play(공개 전엔 앱 웹 버전) */}
-      <a
-        href={appLink.url}
-        target={appLink.sameTab ? undefined : "_blank"}
-        rel="noopener"
-        onClick={() => usecases.analytics.track({ event: "app_open_click", placement: "map_fab", store: appLink.store })}
-        style={{ position: "absolute", left: 16, bottom: "calc(40dvh + 14px)", zIndex: 18, display: "inline-flex", alignItems: "center", gap: 6, height: 40, boxSizing: "border-box", padding: "0 16px 0 13px", borderRadius: radius.full, background: color.primary[500], color: color.white, fontWeight: 600, fontSize: 14, textDecoration: "none", boxShadow: shadow.md }}
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color.white} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-          <rect width="14" height="20" x="5" y="2" rx="2" ry="2" />
-          <path d="M12 18h.01" />
-        </svg>
-        앱으로 보기
-      </a>
-
       {/* 바텀시트 */}
       {root && (
         <SnapSheet ref={sheetRef} mountPoint={root} onSnap={(i) => setAtFull(i >= 3)}>
-          <div style={{ paddingTop: atFull ? headerH : 0, transition: "padding-top .18s ease" }}>
+          <div className="list-content" style={{ paddingTop: atFull ? headerH : 0, transition: "padding-top .18s ease" }}>
           {/* full로 펼쳐졌을 때 — 시트 상단 그랩바 유지(드래그/탭으로 접기, 헤더에 가려도 보이게 sticky) */}
           {atFull && (
             <div
+              className="list-expanded-handle"
               onClick={() => sheetRef.current?.snapTo(2)}
               style={{ position: "sticky", top: headerH, zIndex: 6, background: color.white, padding: "8px 0 7px", cursor: "pointer", borderBottom: `1px solid ${color.line.divider}` }}
             >
@@ -455,6 +433,32 @@ export default function App() {
           </div>
         </SnapSheet>
       )}
+
+      </aside>
+
+      {/* 지도 — isolation으로 별도 쌓임 맥락: 네이버 로고·축척(SDK가 큰 z-index를 줌)이 상세·모달 위로 비치지 않게 */}
+      <div className="map-pane" style={{ position: "absolute", inset: 0, zIndex: 0, isolation: "isolate" }}>
+        {error ? (
+          <div style={{ padding: 24, paddingTop: 140, color: color.status.error, fontSize: 14 }}>데이터 로드 실패: {error}</div>
+        ) : (
+          <MapBoundary><MapView shops={mapShops} highlightedId={highlightId} center={mapCenter} myPos={myPos} showToday={chip === "today"} showDiscount={chip === "event"} onPinClick={onPinClick} onBoundsChanged={onBoundsChanged} /></MapBoundary>
+        )}
+
+      {/* 앱으로 보기 (지도 우하단) — 설치 링크: iPhone·iPad·PC는 App Store, 안드로이드는 Play(공개 전엔 앱 웹 버전) */}
+      <a className="app-open-link"
+        href={appLink.url}
+        target={appLink.sameTab ? undefined : "_blank"}
+        rel="noopener"
+        onClick={() => usecases.analytics.track({ event: "app_open_click", placement: "map_fab", store: appLink.store })}
+        style={{ position: "absolute", left: 16, bottom: "calc(40dvh + 14px)", zIndex: 18, display: "inline-flex", alignItems: "center", gap: 6, height: 40, boxSizing: "border-box", padding: "0 16px 0 13px", borderRadius: radius.full, background: color.primary[500], color: color.white, fontWeight: 600, fontSize: 14, textDecoration: "none", boxShadow: shadow.md }}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color.white} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <rect width="14" height="20" x="5" y="2" rx="2" ry="2" />
+          <path d="M12 18h.01" />
+        </svg>
+        앱으로 보기
+      </a>
+      </div>
 
       {/* 오버레이 (lazy — 청크 도착 전 잠깐은 아무것도 안 그림). 경계를 각자 둬서 하나가 로딩 중이어도 다른 오버레이는 안 가려짐 */}
       {selectedId && (

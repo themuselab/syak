@@ -888,32 +888,115 @@ a:focus-visible {
   font-weight: 400;
 }
 
+/* The desktop page has two real flex panes; the mobile sheet remains an overlay. */
+.browser-panel {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.browser-panel .react-modal-sheet-root {
+  pointer-events: none;
+}
 @media (min-width: 900px) {
-  .home-header {
-    width: 440px;
-    right: auto;
-    padding-top: 16px;
+  .consumer-app {
+    display: flex;
+    --browser-panel-width: 38%;
   }
-  .consumer-app .react-modal-sheet-container {
-    width: 440px !important;
-    right: auto !important;
+  .browser-panel {
+    position: relative;
+    inset: auto;
+    flex: 0 0 var(--browser-panel-width);
+    min-width: 320px;
+    min-height: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    pointer-events: auto;
+    border-right: 1px solid #ebebeb;
+    box-sizing: border-box;
+    z-index: 20;
+  }
+  .home-header {
+    position: relative;
+    inset: auto;
+    flex-shrink: 0;
+    width: auto;
+    padding-top: 16px;
+    padding-bottom: 16px;
+  }
+  .map-pane {
+    position: relative !important;
+    inset: auto !important;
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+  }
+  .browser-panel .react-modal-sheet-root {
+    position: relative !important;
+    inset: auto !important;
+    flex: 1;
+    min-height: 0;
+    height: auto !important;
+    width: 100% !important;
+    pointer-events: auto;
+  }
+  .browser-panel .react-modal-sheet-container {
+    position: absolute !important;
+    inset: 0 !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    width: 100% !important;
+    transform: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+  .browser-panel .react-modal-sheet-header-container,
+  .list-expanded-handle {
+    display: none;
+  }
+  .browser-panel .list-content {
+    padding-top: 0 !important;
+  }
+  .browser-panel .react-modal-sheet-content-scroller {
+    scrollbar-width: thin;
+  }
+  .home-filters {
+    padding-top: 12px;
+  }
+  .shop-feed-card {
+    padding: 20px 0;
+  }
+  .shop-feed-photos button {
+    flex: 1 0 calc((100% - 8px) / 3);
+    min-width: 0;
+  }
+  .shop-feed-photos img {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 3 / 4;
+    max-height: 260px;
   }
   .shop-detail {
     right: auto;
-    width: 480px;
+    width: var(--browser-panel-width);
+    min-width: 320px;
     box-shadow: 4px 0 24px #00000014;
+  }
+  .detail-gallery img,
+  .detail-photo-placeholder {
+    width: calc((100% - 12px) / 3);
+    height: auto;
+    aspect-ratio: 126 / 152;
+    max-height: 280px;
   }
   .filter-panel {
     right: auto;
-    width: 440px;
+    width: var(--browser-panel-width);
+    min-width: 320px;
   }
-}
-
-@media (min-width: 481px) {
-  body {
-    display: flex;
-    justify-content: center;
-    align-items: flex-start;
-    background-color: #f5f5f5 !important;
+  .map-pane .app-open-link,
+  .map-pane [aria-label="현재 위치로"] {
+    bottom: 24px !important;
   }
 }
