@@ -27,6 +27,10 @@ Actions 예약 실행은 지연될 수 있다. 공식 실시간 API나 웹훅 �
 
 ## 실행과 확인
 
+오류 없는 응답에서 `bizItemSchedule.hourly`가 명시적으로 null이면 시간표 미제공으로 분류한다. 해당 샵의 슬롯 저장·알림은 건너뛰고 Actions 경고와 실행 요약에 남긴다. 빈 배열·마감으로 변환하지 않는다. 필드 누락, GraphQL 오류, HTTP 오류는 여전히 실패다. 시간표 미제공을 날짜형 예약으로 단정하지 않는다.
+
+상세는 Apollo 상세 이름이 로드될 때까지 최대 12초 기다리고, 실패하면 예산 내에서 한 번 재시도한다. 재시도도 실패하면 이전 데이터 보존 및 Actions 실패를 유지한다.
+
 수동 실행: `gh workflow run partners.yml --repo themuselab/syak -f mode=fast` 또는 `-f mode=details`.
 
 검증: `cd scraper && python -m unittest test_partner_refresh.py`; 백엔드 `PartnerRefreshService.test.ts` 및 전체 Jest 테스트. 신규 API를 백엔드에 먼저 배포한 뒤 workflow를 반영한다. fast 기본 예산 210초, details 600초. 실패가 있으면 Actions를 실패 처리하고 이전 데이터는 남긴다.

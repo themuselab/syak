@@ -18,6 +18,51 @@ KST = timezone(timedelta(hours=9))
 BUDGET = int(os.environ.get("PARTNER_BUDGET_SEC", "210"))
 
 
+class HourlyScheduleUnavailable(ValueError):
+    """The item exists, but does not publish an hourly calendar."""
+
+
+def report(message, warning=False):
+    print(("::warning::" if warning else "") + message, flush=True)
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        with open(summary, "a", encoding="utf-8") as output:
+            output.write("- " + message + "\n")
+
+
+async def fetch_partner_detail(page, shop_id, deadline):
+    """Wait for hydrated detail, retry one incomplete navigation within budget."""
+    from enrich_details import extract_detail
+    for attempt in range(2):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("Detail budget exhausted")
+        try:
+            await page.goto(f"https://pcmap.place.naver.com/place/{shop_id}/home",
+                            wait_until="domcontentloaded", timeout=min(25000, int(remaining * 1000)))
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("Detail budget exhausted")
+            await page.wait_for_function("""() => {
+                const state = window.__APOLLO_STATE__;
+                const root = state?.ROOT_QUERY;
+                if (!root) return false;
+                const resolve = v => v?.__ref ? state[v.__ref] : v;
+                return Object.entries(root).some(([key, value]) =>
+                    key.startsWith('placeDetail') && resolve(resolve(value)?.base)?.name);
+            }""", timeout=min(12000, int(remaining * 1000)))
+            apollo = await page.evaluate("() => window.__APOLLO_STATE__ || null")
+            detail = extract_detail(apollo or {}, shop_id)
+            if not detail.get("name_detail"):
+                raise ValueError("Incomplete place detail")
+            return apollo, detail
+        except Exception:
+            if attempt or time.monotonic() + 2 >= deadline:
+                raise
+            report(f"Retrying incomplete detail: {shop_id}")
+            await asyncio.sleep(2)
+
+
 def stamp():
     return datetime.now(timezone.utc).isoformat()
 
@@ -43,7 +88,10 @@ def apply(shop, kind, observed_at, data):
 def decode_slots(raw):
     if raw.get("errors"):
         raise ValueError("Schedule returned errors")
-    hourly = (((raw.get("data") or {}).get("schedule") or {}).get("bizItemSchedule") or {}).get("hourly")
+    item_schedule = (((raw.get("data") or {}).get("schedule") or {}).get("bizItemSchedule") or {})
+    if isinstance(item_schedule, dict) and "hourly" in item_schedule and item_schedule["hourly"] is None:
+        raise HourlyScheduleUnavailable("Hourly calendar not provided; previous slots preserved")
+    hourly = item_schedule.get("hourly")
     if not isinstance(hourly, list):
         raise ValueError("Schedule missing; preserving previous slots")
     result = []
@@ -104,13 +152,13 @@ def event_for(shop):
 
 def fast():
     deadline = time.monotonic() + BUDGET
-    errors, updated = 0, 0
+    errors, updated, unavailable = 0, 0, 0
     # Each kind fetches its own live membership list. A page holds at most 50 shops.
     for kind, collect in [("events", event_for), ("slots", slots_for)]:
         for batch in pages(kind):
             for shop in batch:
                 if time.monotonic() >= deadline:
-                    print(f"Budget reached: updated={updated}, errors={errors}")
+                    report(f"Budget reached: updated={updated}, unavailable={unavailable}, errors={errors}", warning=True)
                     return errors
                 if not shop.get("due"):
                     continue
@@ -134,18 +182,21 @@ def fast():
                                 notify_new_slots({str(shop["id"]): times})
                             except Exception:
                                 print(f"Notification failed for {shop['id']}; data committed", flush=True)
+                except HourlyScheduleUnavailable:
+                    unavailable += 1
+                    report(f"Hourly calendar unavailable: shop={shop['id']}; no slot write or notification", warning=True)
                 except Exception as exc:
                     errors += 1
                     reason = str(exc)[:120] if isinstance(exc, ValueError) else str(getattr(exc, 'code', ''))
-                    print(f"Preserved {shop['id']} {kind}: {type(exc).__name__} {reason}", flush=True)
+                    report(f"Preserved {shop['id']} {kind}: {type(exc).__name__} {reason}", warning=True)
                 time.sleep(0.5)
-    print(f"Partner refresh: updated={updated}, errors={errors}", flush=True)
+    report(f"Partner refresh: updated={updated}, unavailable={unavailable}, errors={errors}")
     return errors
 
 
 async def details():
     from playwright.async_api import async_playwright
-    from enrich_details import fetch_detail, extract_detail, fetch_reviews
+    from enrich_details import fetch_reviews
     from sync_partners import fetch_photos, rep_price, tier, UA
     from build_read_model import build_summary, build_detail
     errors = 0
@@ -164,13 +215,7 @@ async def details():
                     context = await browser.new_context(user_agent=UA, locale="ko-KR")
                     try:
                         page = await context.new_page()
-                        apollo, error = await fetch_detail(page, shop["id"])
-                        root = (apollo or {}).get("ROOT_QUERY") or {}
-                        if not any(key.startswith("placeDetail") for key in root):
-                            raise ValueError("Missing place detail")
-                        detail = extract_detail(apollo, shop["id"])
-                        if not detail.get("name_detail"):
-                            raise ValueError("Incomplete place detail")
+                        apollo, detail = await fetch_partner_detail(page, shop["id"], deadline)
                         reviews = await fetch_reviews(page, shop["id"], 15)
                         review_valid = await page.evaluate("() => Object.keys(window.__APOLLO_STATE__?.ROOT_QUERY || {}).some(k => /visitorReviews/i.test(k)) || Object.values(window.__APOLLO_STATE__ || {}).some(v => v?.__typename === 'VisitorReview')")
                         if not review_valid:
@@ -216,7 +261,8 @@ async def details():
                         print(f"Details {'refreshed' if result.get('applied') else 'skipped'}: {shop['id']}", flush=True)
                     except Exception as exc:
                         errors += 1
-                        print(f"Details preserved: {shop['id']} {type(exc).__name__}", flush=True)
+                        reason = str(exc)[:120] if isinstance(exc, ValueError) else ""
+                        report(f"Details preserved: {shop['id']} {type(exc).__name__} {reason}", warning=True)
                     finally:
                         await context.close()
         finally:
