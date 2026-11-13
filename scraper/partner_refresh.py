@@ -246,6 +246,12 @@ async def details():
                         blob = json.dumps(apollo)
                         booking = re.search(r"booking/(\d+)/bizes/(\d+)/items/(\d+)", blob)
                         payload = {"detail": patch, "name": detail.get("name_detail"), "representative_image": detail.get("repImage"), "review_count": detail.get("visitorReviewsTotal"), "min_price": price, "price_tier": tier(price) if price is not None else None}
+                        try:
+                            lat, lng = float(detail.get("y")), float(detail.get("x"))
+                            if -90 <= lat <= 90 and -180 <= lng <= 180:
+                                payload.update(lat=lat, lng=lng)
+                        except (TypeError, ValueError):
+                            pass
                         if booking:
                             payload.update(biz_type=int(booking[1]), biz_id=booking[2], item_id=booking[3])
                         booking_items = []

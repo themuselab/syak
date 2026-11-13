@@ -1,5 +1,5 @@
 export type EventProperties = Record<string, string | number | boolean>;
-type Options = { sdkKey?: string; gtmId?: string; transport?: string; deviceId?: string; getDeviceId?: () => Promise<string> };
+type Options = { sdkKey?: string; gtmId?: string; transport?: string; deviceId?: string; getDeviceId?: () => Promise<string>; onEvent?: (name: string, properties: EventProperties) => void };
 type BrowserWindow = Window & { dataLayer?: unknown[]; gtag?: (...args: unknown[]) => void };
 
 /** One delivery owner per destination. GTM must not resend direct GA events. */
@@ -52,6 +52,7 @@ export function createAnalyticsDelivery(options: Options) {
       };
       // Search input, URLs with queries, credentials and error messages are never forwarded.
       for (const key of ['search_term', 'phone', 'email', 'name', 'token', 'url', 'error_message']) delete params[key];
+      try { options.onEvent?.(name, params); } catch { /* independent destination */ }
       w.dataLayer ??= [];
       if (gtm && !document.querySelector('script[data-syak-gtm]')) {
         w.dataLayer.push({ 'gtm.start': Date.now(), event: 'gtm.js' });
