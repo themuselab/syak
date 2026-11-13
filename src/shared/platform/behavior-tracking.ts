@@ -1,20 +1,10 @@
 type Properties = Record<string, string | number | boolean>;
 type Clarity = ((...args: unknown[]) => void) & { q?: unknown[][] };
 type Browser = Window & { clarity?: Clarity };
-const uuid = () =>
-  globalThis.crypto?.randomUUID?.() ??
-  "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    return (c === "x" ? r : (r & 3) | 8).toString(16);
-  });
-
-export function createBehaviorTracking(
-  endpoint: string,
+export function createClarityTracking(
   clarityProjectId?: string,
 ) {
-  let session: { id: string; at: number } | undefined;
   let booted = false;
-  let inFlight = 0;
   function clarity() {
     if (
       !clarityProjectId ||
@@ -49,53 +39,7 @@ export function createBehaviorTracking(
     // Development and preview traffic must not enter the production analytics project.
     const hostname = window.location?.hostname;
     if (hostname && !['themuselab.kr', 'www.themuselab.kr', 'app.themuselab.kr'].includes(hostname)) return;
-    const now = Date.now();
-    if (!session) {
-      try {
-        const saved = JSON.parse(
-          sessionStorage.getItem("syak:behavior-session") ?? "null",
-        );
-        if (saved?.id && Number.isFinite(saved.at)) session = saved;
-      } catch {
-        /* storage optional */
-      }
-    }
-    const fresh = !session || now - session.at > 30 * 60 * 1000;
-    if (fresh) session = { id: uuid(), at: now };
-    const current = session!;
-    current.at = now;
-    try {
-      sessionStorage.setItem("syak:behavior-session", JSON.stringify(current));
-    } catch {
-      /* storage optional */
-    }
     const platform = String(params.platform ?? "web");
-    const make = (name: string, ts: number) => ({
-      event_id: uuid(),
-      session_id: current.id,
-      event_name: name,
-      ts,
-      platform,
-      shop_id: params.shop_id,
-      shop_type: params.shop_type,
-      reservation_method: params.reservation_method ?? params.route,
-    });
-    const events = fresh ? [make("service_enter", now - 1)] : [];
-    if (eventName !== "service_enter") events.push(make(eventName, now));
-    if (events.length && inFlight < 8) {
-      inFlight++;
-      void fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ events }),
-        keepalive: true,
-        credentials: "omit",
-      })
-        .catch(() => {})
-        .finally(() => {
-          inFlight--;
-        });
-    }
     const c = clarity();
     if (c) {
       c("set", "platform", platform);
