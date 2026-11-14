@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
 from types import SimpleNamespace
-from partner_refresh import decode_slots, slots_for, fast, HourlyScheduleUnavailable, fetch_partner_detail
+from partner_refresh import decode_slots, slots_for, fast, HourlyScheduleUnavailable, fetch_partner_detail, details
 
 
 class PartnerRefreshTests(unittest.TestCase):
@@ -55,6 +55,28 @@ class PartnerRefreshTests(unittest.TestCase):
 
 
 class DetailLoadingTests(unittest.IsolatedAsyncioTestCase):
+    async def test_retry_skips_fresh_shops_but_reports_unfinished_due_work(self):
+        browser = SimpleNamespace(close=AsyncMock(), new_context=AsyncMock())
+        manager = SimpleNamespace(chromium=SimpleNamespace(launch=AsyncMock(return_value=browser)))
+        context = AsyncMock()
+        context.__aenter__.return_value = manager
+        modules = {
+            'playwright.async_api': SimpleNamespace(async_playwright=lambda: context),
+            'enrich_details': SimpleNamespace(fetch_reviews=AsyncMock()),
+            'sync_partners': SimpleNamespace(fetch_photos=AsyncMock(), rep_price=Mock(), tier=Mock(), UA='test'),
+            'build_read_model': SimpleNamespace(build_summary=Mock(), build_detail=Mock()),
+        }
+        for shops, expected in [([{'id': 'saved', 'due': False}], 0),
+                                ([{'id': 'saved', 'due': False}, {'id': 'failed', 'due': True}], 1)]:
+            with self.subTest(shops=shops), patch.dict('sys.modules', modules), \
+                 patch('partner_refresh.pages', return_value=[shops]), \
+                 patch('partner_refresh.BUDGET', 0), \
+                 patch('partner_refresh.time.monotonic', return_value=10), \
+                 patch('partner_refresh.report'):
+                self.assertEqual(await details(), expected)
+        browser.new_context.assert_not_called()
+        self.assertEqual(browser.close.await_count, 2)
+
     async def test_incomplete_load_retries_then_extracts(self):
         page = SimpleNamespace(goto=AsyncMock(), wait_for_function=AsyncMock(side_effect=[TimeoutError(), None]),
                                evaluate=AsyncMock(return_value={'ROOT_QUERY': {}}))

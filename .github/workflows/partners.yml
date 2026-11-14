@@ -55,4 +55,10 @@ jobs:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
           PARTNER_BUDGET_SEC: "600"
-        run: python scraper/partner_refresh.py details
+        run: |
+          if python scraper/partner_refresh.py details; then
+            exit 0
+          fi
+          echo "::warning::Retrying remaining due partners in a fresh browser (120-second budget)"
+          sleep 5
+          PARTNER_BUDGET_SEC=120 python scraper/partner_refresh.py details

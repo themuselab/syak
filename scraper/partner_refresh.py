@@ -50,7 +50,7 @@ async def fetch_partner_detail(page, shop_id, deadline):
                 const resolve = v => v?.__ref ? state[v.__ref] : v;
                 return Object.entries(root).some(([key, value]) =>
                     key.startsWith('placeDetail') && resolve(resolve(value)?.base)?.name);
-            }""", timeout=min(12000, int(remaining * 1000)))
+            }""", timeout=min(20000, int(remaining * 1000)))
             apollo = await page.evaluate("() => window.__APOLLO_STATE__ || null")
             detail = extract_detail(apollo or {}, shop_id)
             if not detail.get("name_detail"):
@@ -206,10 +206,11 @@ async def details():
         try:
             for batch in pages("details"):
                 for shop in batch:
-                    if time.monotonic() >= deadline:
-                        return errors
                     if not shop.get("due"):
                         continue
+                    if time.monotonic() >= deadline:
+                        report("Detail budget exhausted with due partners remaining", warning=True)
+                        return errors + 1
                     observed = stamp()
                     # Close each context to release Apollo state, images and page resources.
                     context = await browser.new_context(user_agent=UA, locale="ko-KR")
