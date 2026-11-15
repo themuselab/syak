@@ -38,7 +38,29 @@ export function useCatalog() {
     requestId.current++;
     setLoaded(s);
     setPins(s); // ShopSummary는 ShopPin 필드를 모두 가짐
+    setError(null);
     setLoading(false);
+  }, []);
+
+  const loadRegions = useCallback(async (gus: string[]) => {
+    const current = ++requestId.current;
+    setLoading(true);
+    setError(null);
+    try {
+      const rows = await usecases.catalog.byGus(gus);
+      if (current !== requestId.current) return;
+      setLoaded(rows);
+      setPins(rows);
+      return rows;
+    } catch (e) {
+      if (current === requestId.current) {
+        setLoaded([]);
+        setPins([]);
+        setError(String(e));
+      }
+    } finally {
+      if (current === requestId.current) setLoading(false);
+    }
   }, []);
 
   const searchByName = useCallback((q: string) => usecases.catalog.searchByName(q), []);
@@ -46,5 +68,5 @@ export function useCatalog() {
   // 필터(분야/가격/시술/혜택) 적용 — 로드된 셋 안에서 클라이언트 필터
   const shops = useMemo(() => loaded.filter((s) => matchesFilter(s, filter)), [loaded, filter]);
 
-  return { shops, pins, loading, error, filter, setFilter, loadBounds, showShops, searchByName };
+  return { shops, pins, loading, error, filter, setFilter, loadBounds, loadRegions, showShops, searchByName };
 }

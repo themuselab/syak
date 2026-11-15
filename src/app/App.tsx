@@ -72,7 +72,7 @@ export default function App() {
     if (name === 'ui_interaction' || name === 'scroll_depth' || name === 'client_error')
       usecases.analytics.track({ event: name, properties });
   }), []);
-  const { shops, pins, loading, error, filter, setFilter, loadBounds, showShops, searchByName } = useCatalog();
+  const { shops, pins, loading, error, filter, setFilter, loadBounds, loadRegions, showShops, searchByName } = useCatalog();
   const [root, setRoot] = useState<HTMLElement | null>(null);
   const [nameResults, setNameResults] = useState<ShopSummary[]>([]);
   const sheetRef = useRef<SheetRef>(null);
@@ -152,15 +152,17 @@ export default function App() {
 
   // 첫 진입: 내 위치로 지도 이동 (그 영역 샵은 지도 idle 시 자동 로드)
   useEffect(() => {
-    // SEO 진입(?gu=)은 그 지역이 지도 중심을 가져야 함 → 위치로 센터 덮지 않음(myPos만 갱신)
+    // SEO 진입(?gu=)은 해당 지역을 기준으로 조회한다.
     const hasGu = !!new URLSearchParams(window.location.search).get("gu");
+    // 지정한 지역을 보러 온 방문자에게는 불필요한 위치 권한을 먼저 요청하지 않는다.
+    if (hasGu) return;
     // 1) 마지막 위치 즉시 복원 → 재방문 일관성 + 서울시청 깜빡임 방지
     try {
       const saved = localStorage.getItem("syak_last_pos");
       if (saved) {
         const p = JSON.parse(saved) as Coordinate;
         setMyPos(p);
-        if (!hasGu) setMapCenter(p);
+        setMapCenter(p);
       }
     } catch {
       /* ignore */
@@ -171,7 +173,7 @@ export default function App() {
       usecases.analytics.track({ event: "location_result", properties: { result: pos ? "available" : "unavailable" } });
       if (pos) {
         setMyPos(pos);
-        if (!hasGu) setMapCenter(pos);
+        setMapCenter(pos);
         try {
           localStorage.setItem("syak_last_pos", JSON.stringify(pos));
         } catch {
@@ -197,6 +199,24 @@ export default function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 지역 진입은 지도 idle과 독립적으로 로드한다. SEO 진입도 지역 선택과 같은 경로를 사용한다.
+  useEffect(() => {
+    if (!filter.gus?.length || filter.sortBy === "partner") return;
+    let alive = true;
+    void loadRegions(filter.gus).then((rows) => {
+      if (!alive || !rows) return;
+      const pts = rows.filter(s => s.coord?.lat && s.coord?.lng);
+      const linkedId = new URLSearchParams(window.location.search).get("shop");
+      const linked = pts.find(s => s.id === linkedId);
+      if (linked) setMapCenter({ ...linked.coord });
+      else if (pts.length) setMapCenter({
+        lat: pts.reduce((sum, s) => sum + s.coord.lat, 0) / pts.length,
+        lng: pts.reduce((sum, s) => sum + s.coord.lng, 0) / pts.length,
+      });
+    });
+    return () => { alive = false; };
+  }, [filter.gus, filter.sortBy, loadRegions]);
 
   // 매장 바로가기(?shop=<네이버 플레이스 id>): 파트너샵 공유 링크 등에서 들어오면 그 매장 상세를 바로 연다.
   // 상세 시트가 id로 직접 불러오므로 지도에 그 매장이 없어도 열린다. id는 숫자만 받는다(임의 문자열 방지).
@@ -242,20 +262,16 @@ export default function App() {
   const lastBounds = useRef<Parameters<typeof loadBounds>[0] | null>(null);
   // The list remains usable when the map SDK is slow or blocked.
   useEffect(() => {
-    let alive = true;
     const timer = setTimeout(() => {
       if (lastBounds.current) return;
       if (sortByRef.current === 'partner') return;
       if (qRef.current) { showShops([]); return; }
-      if (gusRef.current?.length) {
-        void usecases.catalog.byGus(gusRef.current).then(rows => { if (alive) showShops(rows); });
-        return;
-      }
+      if (gusRef.current?.length) return;
       const bounds = { swLat: 37.48, swLng: 127.01, neLat: 37.515, neLng: 127.05 };
       lastBounds.current = bounds;
       void loadBounds(bounds);
     }, 2000);
-    return () => { alive = false; clearTimeout(timer); };
+    return () => clearTimeout(timer);
   }, [loadBounds, showShops]);
   const sortByRef = useRef(filter.sortBy);
   sortByRef.current = filter.sortBy;
@@ -311,19 +327,11 @@ export default function App() {
     return list;
   }, [q, nameResults, shops, chip, openShopIds, myPos, filter]);
 
-  async function selectRegions(gus: string[]) {
+  function selectRegions(gus: string[]) {
     setFilter({ ...filter, gus: gus.length ? gus : undefined });
     if (gus.length) {
       usecases.analytics.track({ event: "region_select", source: gus.join(",") });
-      const list = await usecases.catalog.byGus(gus);
-      const pts = list.filter((s) => s.coord?.lat && s.coord?.lng);
-      if (pts.length) {
-        const lat = pts.reduce((a, s) => a + s.coord.lat, 0) / pts.length;
-        const lng = pts.reduce((a, s) => a + s.coord.lng, 0) / pts.length;
-        setMapCenter({ lat, lng });
-        showShops(list); // 즉시 표시(지도 idle이 영역으로 다듬음)
-      }
-    }
+    } else if (lastBounds.current) void loadBounds(lastBounds.current);
   }
 
   // 결과 없을 때 전체 초기화 (필터·정렬·칩·맞춤찾기·검색어)

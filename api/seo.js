@@ -38,8 +38,9 @@ function eunNeun(w) {
 
 // 앱(지역 필터) 딥링크. 같은 도메인이라 utm 미부착(GA4 세션 왜곡 방지) →
 // 퍼널은 이벤트 seo_landing/seo_cta_click + landing_page 차원으로.
-function deepLink(linkGu, cat, gu) {
+function deepLink(linkGu, cat, gu, shopId) {
   const q = new URLSearchParams({ gu: linkGu, cat: CATEGORIES[cat].ko, from: `seo-${cat}-${slugOf(gu)}` });
+  if (shopId != null && /^\d{5,}$/.test(String(shopId))) q.set("shop", String(shopId));
   return `${SITE}/?${q}`;
 }
 function cta(linkGu, cat, gu, placement, cls, label) {
@@ -133,8 +134,8 @@ function render(cat, gu, entry, catData, nowIso, freshLabel) {
     ? `<h2>${esc(gu)} ${esc(place)} 사진으로 둘러보기</h2>` +
       `<ul class="car" aria-label="${esc(gu)} ${esc(place)} 매장 사진">` +
       withPhoto.map((s, i) =>
-        `<li><a href="${deepLink(lg, cat, gu)}" rel="nofollow" ` +
-          `onclick="window.syakTrack('event','seo_cta_click',{category:'${cat}',region:${JSON.stringify(gu)},placement:'carousel'})">` +
+        `<li><a href="${deepLink(lg, cat, gu, s.id)}" rel="nofollow" ` +
+          `onclick="${esc(`window.syakTrack('event','seo_cta_click',{category:'${cat}',region:${JSON.stringify(gu)},placement:'carousel'})`)}">` +
           `<img src="${esc(s.ph)}" alt="${esc(`${gu} ${place} ${s.name}`)}" width="150" height="150"` +
           `${i < 2 ? "" : ' loading="lazy"'} decoding="async" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src='/fallback.png'">` +
           `<span class="cn">${esc(s.name)}</span>` +
@@ -155,8 +156,8 @@ function render(cat, gu, entry, catData, nowIso, freshLabel) {
     const menuLine = s.m ? `<div class="mn">${esc(s.m.n)} ${esc(won(s.m.p))}~</div>` : "";
     const roadLine = s.road ? `<div class="rd">📍 ${esc(s.road)}</div>` : "";
     cards.push(
-      `<li class="card"><a href="${deepLink(lg, cat, gu)}" rel="nofollow" ` +
-        `onclick="window.syakTrack('event','seo_cta_click',{category:'${cat}',region:${JSON.stringify(gu)},placement:'card'})">` +
+      `<li class="card"><a href="${deepLink(lg, cat, gu, s.id)}" rel="nofollow" ` +
+        `onclick="${esc(`window.syakTrack('event','seo_cta_click',{category:'${cat}',region:${JSON.stringify(gu)},placement:'card'})`)}">` +
         `<div class="nm">${esc(s.name)}</div>` +
         `<div class="meta">${esc(s.tier || "")} · ${esc(price)}~${rv}</div>` +
         menuLine + roadLine +
