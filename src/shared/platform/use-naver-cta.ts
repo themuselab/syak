@@ -1,24 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
-import { analyticsDelivery } from './analytics-runtime';
-
-type Decision = Awaited<ReturnType<typeof analyticsDelivery.decideNaverCta>>;
-
-export function useNaverCta(shopId: string, isPartner: boolean, eligible: boolean) {
-  const [result, setResult] = useState<{ shopId: string; decision: Decision }>();
-  const decision = eligible && result?.shopId === shopId ? result.decision : undefined;
-  const abort = useRef<AbortController | null>(null);
-  useEffect(() => {
-    if (!eligible) return;
-    const controller = new AbortController();
-    abort.current = controller;
-    void analyticsDelivery.decideNaverCta(controller.signal).then(value => {
-      if (!controller.signal.aborted) setResult({ shopId, decision: value });
-    });
-    return () => controller.abort();
-  }, [shopId, eligible]);
-  useEffect(() => {
-    if (decision) analyticsDelivery.send('booking_cta_view', { platform: 'web', shop_id: shopId, shop_type: isPartner ? 'partner' : 'general', experiment_key: 5, variation: decision.variation });
-  }, [decision, shopId, isPartner]);
-  return { label: decision?.variation === 'B' ? decision.label : undefined,
-    onInteraction() { abort.current?.abort(); } };
+// 실험 5(네이버 예약 버튼 문구)는 A(기존 문구) 승리로 종료했다(2026-11-17, 노출 326명: A 25.5% vs B 17.9%).
+// 모두 기존 문구를 보여주고, 실험 판정·노출 이벤트(booking_cta_view)는 더 이상 보내지 않는다.
+// 호출부(상세 예약 버튼)는 그대로 두고 label이 없으면 기존 문구를 쓰므로, 다음 문구 실험 때 이 훅만 다시 채우면 된다.
+export function useNaverCta(shopId: string, isPartner: boolean, eligible: boolean): {
+  label: string | undefined;
+  onInteraction: () => void;
+} {
+  void shopId; void isPartner; void eligible;
+  return { label: undefined, onInteraction() {} };
 }
