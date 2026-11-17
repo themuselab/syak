@@ -12,6 +12,7 @@ from pathlib import Path
 from playwright.async_api import async_playwright
 from enrich_details import fetch_detail, extract_detail, fetch_reviews
 from build_read_model import build_summary, build_detail, to_int
+from place_photos import business_photos
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -81,17 +82,7 @@ async def fetch_photos(page, sid, scrolls=5):
         apollo = await page.evaluate("() => window.__APOLLO_STATE__ || null")
     except Exception:
         return []
-    urls = []
-    for v in (apollo or {}).values():
-        if isinstance(v, dict):
-            for key in ("imageUrl", "url", "thumbnailUrl", "originUrl", "originalUrl"):
-                u = v.get(key)
-                # maps-cms = 네이버 지도 프로모션 배너("예약하세요"·"간편청구") — 매장 사진 아님
-                if isinstance(u, str) and "pstatic.net" in u and u.startswith("http") and "maps-cms" not in u:
-                    uu = u.split("?")[0]
-                    if uu not in urls:
-                        urls.append(uu)
-    return urls
+    return business_photos(apollo, sid)
 
 
 async def sync_one(page, shop):
