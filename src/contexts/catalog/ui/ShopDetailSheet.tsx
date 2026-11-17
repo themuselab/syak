@@ -160,7 +160,6 @@ export function ShopDetailSheet({ shopId, onClose, onReserveClick }: Props) {
                   [
                     detail.images.representative,
                     ...detail.images.gallery,
-                    ...detail.images.review,
                     ...detail.images.menu,
                   ].filter(Boolean) as string[],
                 ),
