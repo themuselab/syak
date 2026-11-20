@@ -23,6 +23,10 @@ class HourlyScheduleUnavailable(ValueError):
     """The item exists, but does not publish an hourly calendar."""
 
 
+class EventPageUnavailable(ValueError):
+    """The upstream response is not a hydrated booking event page."""
+
+
 def report(message, warning=False):
     print(("::warning::" if warning else "") + message, flush=True)
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
@@ -149,6 +153,8 @@ def event_for(shop, deadline=None):
         try:
             with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=min(15, remaining)) as response:
                 html = response.read().decode("utf-8")
+            if '"eventDescJson"' not in html:
+                raise EventPageUnavailable("Event page unavailable; previous event preserved")
             desc, price = parse_event(html)
             return {"event_desc": desc, "event_price": price}
         except (ValueError, urllib.error.URLError, TimeoutError):
@@ -161,21 +167,33 @@ def event_for(shop, deadline=None):
 def fast():
     deadline = time.monotonic() + BUDGET
     errors, updated, unavailable = 0, 0, 0
+    deferred, attempted = 0, 0
+
+    def finish(budget=False):
+        # Isolated upstream outages are partial progress, not a total job outage.
+        # Broad degradation (>20%) or no successful writes still requires attention.
+        degraded = deferred > 0 and (not updated or deferred / max(attempted, 1) > 0.2)
+        report(f"Partner refresh {'partial' if deferred or budget else 'complete'}: updated={updated}, "
+               f"unavailable={unavailable}, deferred={deferred}, errors={errors}, budget_reached={budget}",
+               warning=bool(deferred or errors or budget))
+        return errors + int(degraded)
     # Each kind fetches its own live membership list. A page holds at most 50 shops.
     for kind, collect in [("events", event_for), ("slots", slots_for)]:
         for batch in pages(kind):
             for shop in batch:
                 if time.monotonic() >= deadline:
-                    report(f"Budget reached: updated={updated}, unavailable={unavailable}, errors={errors}", warning=True)
-                    return errors
+                    return finish(budget=True)
                 if not shop.get("due"):
                     continue
                 observed = stamp()
+                attempted += 1
+                collecting = True
                 try:
                     today = datetime.now(KST).date()
                     data = collect(shop, today.isoformat(), (today + timedelta(days=2)).isoformat(), deadline) if kind == "slots" else collect(shop, deadline=deadline)
                     if data is None:
                         continue
+                    collecting = False
                     result = apply(shop, kind, observed, data)
                     updated += bool(result.get("applied"))
                     # Retain existing notification filtering, only after commit.
@@ -194,12 +212,19 @@ def fast():
                     unavailable += 1
                     report(f"Hourly calendar unavailable: shop={shop['id']}; no slot write or notification", warning=True)
                 except Exception as exc:
-                    errors += 1
+                    transient = collecting and (
+                        isinstance(exc, (EventPageUnavailable, TimeoutError)) or
+                        isinstance(exc, urllib.error.HTTPError) and (exc.code == 429 or exc.code >= 500) or
+                        isinstance(exc, urllib.error.URLError) and not isinstance(exc, urllib.error.HTTPError)
+                    )
+                    if transient:
+                        deferred += 1
+                    else:
+                        errors += 1
                     reason = str(exc)[:120] if isinstance(exc, ValueError) else str(getattr(exc, 'code', ''))
                     report(f"Preserved {shop['id']} {kind}: {type(exc).__name__} {reason}", warning=True)
                 time.sleep(0.5)
-    report(f"Partner refresh: updated={updated}, unavailable={unavailable}, errors={errors}")
-    return errors
+    return finish()
 
 
 async def details():

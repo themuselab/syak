@@ -5,6 +5,29 @@ from partner_refresh import decode_slots, slots_for, fast, HourlyScheduleUnavail
 
 
 class PartnerRefreshTests(unittest.TestCase):
+    def test_isolated_upstream_502_is_partial_but_storage_502_fails(self):
+        from urllib.error import HTTPError
+        shops = [{'id': str(i), 'due': True} for i in range(10)]
+        for storage in (False, True):
+            with self.subTest(storage=storage), \
+                 patch('partner_refresh.pages', side_effect=lambda kind: [shops] if kind == 'slots' else []), \
+                 patch('partner_refresh.slots_for') as collect, \
+                 patch('partner_refresh.apply') as save, \
+                 patch('partner_refresh.time.sleep'), patch('partner_refresh.report'):
+                error = HTTPError('https://example.invalid', 502, 'Bad gateway', {}, None)
+                collect.side_effect = ([{}] * 10) if storage else [error] + [{}] * 9
+                save.side_effect = [error] + [{'applied': True}] * 9 if storage else [{'applied': True}] * 9
+                self.assertEqual(fast(), 1 if storage else 0)
+
+    def test_widespread_upstream_failure_still_fails(self):
+        from urllib.error import HTTPError
+        with patch('partner_refresh.pages', side_effect=lambda kind: [[{'id': '1', 'due': True}]] if kind == 'slots' else []), \
+             patch('partner_refresh.slots_for', side_effect=HTTPError('https://example.invalid', 502, 'Bad gateway', {}, None)), \
+             patch('partner_refresh.apply') as save, \
+             patch('partner_refresh.time.sleep'), patch('partner_refresh.report'):
+            self.assertEqual(fast(), 1)
+            save.assert_not_called()
+
     def test_missing_schedule_is_not_an_empty_calendar(self):
         for raw in ({}, {"errors": [{"message": "failed"}]}, {"data": {"schedule": None}}):
             with self.assertRaises(ValueError):
