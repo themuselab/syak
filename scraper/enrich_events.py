@@ -130,15 +130,26 @@ def extract_label(desc):
     return "할인"
 
 
+def event_entries(html):
+    """Decode a complete JSON value, including brackets inside description strings.
+
+    Missing/malformed data must never be treated as an authoritative empty event.
+    """
+    match = re.search(r'"eventDescJson":\s*', html)
+    if not match:
+        raise ValueError("Invalid event page; preserving previous event")
+    arr, _ = json.JSONDecoder().raw_decode(html[match.end():])
+    if not isinstance(arr, list) or any(
+        not isinstance(row, dict) or (row.get("desc") is not None and not isinstance(row["desc"], str))
+        for row in arr
+    ):
+        raise ValueError("Invalid event entries; preserving previous event")
+    return arr
+
+
 def parse_event(html):
     """eventDescJson → (event_desc, event_price). 없으면 (None, None)."""
-    m = re.search(r'"eventDescJson":\s*(\[.*?\])', html)
-    if not m:
-        return None, None
-    try:
-        arr = json.loads(m.group(1))
-    except Exception:
-        return None, None
+    arr = event_entries(html)
     for a in arr:
         d = (a.get("desc") or "").strip()
         if not d or not DISC_KW.search(d):
@@ -163,8 +174,12 @@ def fetch_one(r):
     if "eventDescJson" not in html:
         PACE.blocked()
         return r["id"], "__ERR__", None
+    try:
+        ed, ep = parse_event(html)
+    except ValueError:
+        PACE.blocked()
+        return r["id"], "__ERR__", None
     PACE.ok()
-    ed, ep = parse_event(html)
     return r["id"], ed, ep
 
 

@@ -10,6 +10,7 @@ import re
 import sys
 import time
 import urllib.request
+import urllib.error
 from datetime import datetime, timedelta, timezone
 
 from slot_ingest import api_get, api_post, notify_new_slots, QUERY, GQL
@@ -135,19 +136,26 @@ def slots_for(shop, start, end, deadline=None):
     return {"startDate": start, "endDate": end, "slots": [{"date": d, "startTime": t} for d, t in sorted(all_slots)], "summary": summary}
 
 
-def event_for(shop):
+def event_for(shop, deadline=None):
     from enrich_events import parse_event, UA
     item = (shop.get("item_ids") or [shop.get("item_id")])[0]
     if not shop.get("biz_id") or not item:
         return None
     url = f"https://m.booking.naver.com/booking/{shop.get('biz_type') or 13}/bizes/{shop['biz_id']}/items/{item}"
-    with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=15) as response:
-        html = response.read().decode("utf-8")
-    match = re.search(r'"eventDescJson":\s*(\[.*?\])', html)
-    if not match or not isinstance(json.loads(match.group(1)), list):
-        raise ValueError("Invalid event page; preserving previous event")
-    desc, price = parse_event(html)
-    return {"event_desc": desc, "event_price": price}
+    for attempt in range(2):
+        remaining = deadline - time.monotonic() if deadline is not None else 15
+        if remaining <= 0:
+            raise TimeoutError("Event budget exhausted; preserving previous event")
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=min(15, remaining)) as response:
+                html = response.read().decode("utf-8")
+            desc, price = parse_event(html)
+            return {"event_desc": desc, "event_price": price}
+        except (ValueError, urllib.error.URLError, TimeoutError):
+            if attempt or (deadline is not None and time.monotonic() + 2 >= deadline):
+                raise
+            report(f"Retrying incomplete event: {shop['id']}")
+            time.sleep(2)
 
 
 def fast():
@@ -165,7 +173,7 @@ def fast():
                 observed = stamp()
                 try:
                     today = datetime.now(KST).date()
-                    data = collect(shop, today.isoformat(), (today + timedelta(days=2)).isoformat(), deadline) if kind == "slots" else collect(shop)
+                    data = collect(shop, today.isoformat(), (today + timedelta(days=2)).isoformat(), deadline) if kind == "slots" else collect(shop, deadline=deadline)
                     if data is None:
                         continue
                     result = apply(shop, kind, observed, data)
