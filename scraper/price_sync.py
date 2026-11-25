@@ -225,6 +225,15 @@ def parse_rating(obj):
     return None
 
 
+def parse_source_category(obj, shop_id):
+    for v in obj.values():
+        if (isinstance(v, dict) and v.get("__typename") == "PlaceDetailBase"
+                and str(v.get("id")) == str(shop_id) and v.get("category")):
+            return {"sourceCategory": v["category"],
+                    "sourceCategoryCodeList": v.get("categoryCodeList") or []}
+    return {}
+
+
 def fetch_place(shop_id):
     """place home → {menus, hours, rating}. None = 차단/실패(도장 안 찍음)."""
     obj = fetch_state(f"https://pcmap.place.naver.com/place/{shop_id}/home")
@@ -236,7 +245,8 @@ def fetch_place(shop_id):
             menus.append({"name": v.get("name"), "price": parse_won(v.get("price")),
                           "recommend": v.get("recommend"), "priceType": v.get("priceType")})
     # menus [] 이면 메뉴 없는 샵(정상) → 도장 찍고 미정 처리
-    return {"menus": menus, "hours": parse_hours(obj), "rating": parse_rating(obj)}
+    return {"menus": menus, "hours": parse_hours(obj), "rating": parse_rating(obj),
+            **parse_source_category(obj, shop_id)}
 
 
 def fetch_reviews(shop_id):
@@ -315,6 +325,9 @@ def main():
             continue
         menus = place["menus"]
         d = {"id": t["id"]}
+        if place.get("sourceCategory"):
+            d["sourceCategory"] = place["sourceCategory"]
+            d["sourceCategoryCodeList"] = place.get("sourceCategoryCodeList") or []
         if place["hours"]:
             d["businessHours"] = place["hours"]
         if place["rating"]:

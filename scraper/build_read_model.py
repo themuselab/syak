@@ -27,6 +27,21 @@ MAX_REVIEW_IMAGES = 6
 MAX_GALLERY = 6
 SHARDS = 256  # details를 256개 버킷으로 샤딩 (id % SHARDS) — 파일수/깃 경량화
 
+# Match verified upstream business categories, never words in a shop's name.
+# Unknown categories remain eligible for review; clinics are not beauty salons.
+NON_SALON_SOURCE_CATEGORIES = {
+    "화장품,향수", "기능성화장품", "미용기기,재료", "건강,의료용품", "미용교육",
+    "미용학원", "평생,사회교육원", "교육원,교육센터", "전문건설업", "방수공사", "배관,냉난방공사", "기업",
+    "한의원", "피부과", "성형외과", "치과", "산부인과", "가정의학과",
+    "비뇨의학과", "병원부속시설", "병원,의원", "외과", "안과",
+    "협회,단체", "종합도소매", "척추,자세교정",
+}
+SPECIFIC_SALON_CATEGORIES = {
+    "네일아트,네일샵": "네일", "왁싱,제모": "왁싱", "미용실": "헤어",
+    "이용원": "헤어", "미용문신,반영구화장": "반영구",
+    "속눈썹증모,연장": "속눈썹", "메이크업": "메이크업", "태닝": "태닝",
+}
+
 
 def to_int(v):
     if v is None:
@@ -96,8 +111,12 @@ def fnum(v):
 
 def build_summary(s, min_price):
     cats = s.get("categories") or []
+    source = s.get("category_detail") or s.get("sourceCategory")
+    if source in NON_SALON_SOURCE_CATEGORIES:
+        raise ValueError("Verified source category is not a beauty salon: " + source)
+    if len(cats) == 1 and source in SPECIFIC_SALON_CATEGORIES:
+        cats = [SPECIFIC_SALON_CATEGORIES[source]]
     if "마사지" in cats:
-        source = s.get("category_detail") or s.get("sourceCategory")
         if source == "피부,체형관리":
             cats = list(dict.fromkeys("피부" if c == "마사지" else c for c in cats))
         elif source not in {"안마,마사지,지압", "스포츠마사지", "발관리", "마사지"}:
