@@ -29,6 +29,7 @@ if not API_BASE or not API_KEY:
 SITE = "https://www.themuselab.kr"
 ROOT = Path(__file__).resolve().parents[1]
 API = ROOT / "api"
+SUPPRESSED_IDS = set(json.loads((API / "catalog-suppressions.json").read_text(encoding="utf-8")))
 MIN_SHOPS = 5   # 이보다 적으면 페이지 안 만듦(thin content 방지)
 TOP_N = 40      # 페이지당 표시 샵 수
 
@@ -146,6 +147,8 @@ def main():
     # (category_ko, gu) 로 버킷팅
     buckets = defaultdict(list)
     for s in rows:
+        if str(s.get("id")) in SUPPRESSED_IDS:
+            continue
         buckets[(s.get("category"), s.get("gu"))].append(s)
 
     categories_out = {}

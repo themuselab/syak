@@ -18,6 +18,7 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 SRC = Path(__file__).parent / "data" / "seoul_shops_detailed.json"
+SUPPRESSED_IDS = set(json.loads((Path(__file__).resolve().parents[1] / "api" / "catalog-suppressions.json").read_text(encoding="utf-8")))
 OUT = Path(__file__).parent.parent / "apps-in-toss" / "syak" / "public" / "data"
 DETAILS = OUT / "details"
 
@@ -95,6 +96,12 @@ def fnum(v):
 
 def build_summary(s, min_price):
     cats = s.get("categories") or []
+    if "마사지" in cats:
+        source = s.get("category_detail") or s.get("sourceCategory")
+        if source == "피부,체형관리":
+            cats = list(dict.fromkeys("피부" if c == "마사지" else c for c in cats))
+        elif source not in {"안마,마사지,지압", "스포츠마사지", "발관리", "마사지"}:
+            raise ValueError("Massage listing requires a verified service category, not a search keyword")
     return {
         "id": s["id"],
         "name": s.get("name"),
@@ -109,6 +116,8 @@ def build_summary(s, min_price):
         "firstVisitDeal": first_visit_deal(s.get("menus")),
         "hasEvent": has_event(s),
         "reservable": bool(s.get("reservable") or s.get("hasBooking")),
+        "sourceCategory": s.get("category_detail") or s.get("sourceCategory"),
+        "sourceCategoryCodeList": s.get("categoryCodeList"),
     }
 
 
@@ -158,11 +167,18 @@ def main():
     buckets = {}  # bucket -> { id: detail }
     skipped = 0
     for s in shops:
+        if str(s.get("id")) in SUPPRESSED_IDS:
+            skipped += 1
+            continue
         if not s.get("x") or not s.get("y") or not s.get("name"):
             skipped += 1
             continue
         mp = min_menu_price(s.get("menus"))
-        summary = build_summary(s, mp)
+        try:
+            summary = build_summary(s, mp)
+        except ValueError:
+            skipped += 1
+            continue
         summaries.append(summary)
         detail = build_detail(s, summary)
         b = int(s["id"]) % SHARDS

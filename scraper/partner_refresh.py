@@ -260,7 +260,7 @@ async def details():
                         record["images"] = {"representative": detail.get("repImage"), "gallery": photos or [], "menu": detail.get("menuImages") or [], "review": [u for r in reviews or [] for u in r.get("images") or []][:30]}
                         price = rep_price(record.get("menus"))
                         model = build_detail(record, build_summary(record, price))
-                        patch = {k: v for k, v in model.items() if k in {"roadAddress", "hoursText", "conveniences", "instagram", "phone", "menus", "images", "reviews", "reviewTotal", "blogReviewTotal", "reservationRoutes"} and v is not None}
+                        patch = {k: v for k, v in model.items() if k in {"sourceCategory", "sourceCategoryCodeList", "roadAddress", "hoursText", "conveniences", "instagram", "phone", "menus", "images", "reviews", "reviewTotal", "blogReviewTotal", "reservationRoutes"} and v is not None}
                         if not patch["images"].get("representative"):
                             patch["images"].pop("representative", None)
                         if reviews is None:
