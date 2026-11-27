@@ -1,4 +1,5 @@
 name: general-shop-refresh
+run-name: general-shop-refresh-${{ inputs.kind || (github.event.schedule == '12 * * * *' && 'metadata' || 'slots') }}
 
 on:
   schedule:
@@ -27,7 +28,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Refresh one logical shard
+      - name: Refresh due shops across all partitions
         env:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}

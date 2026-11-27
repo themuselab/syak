@@ -26,15 +26,26 @@ jobs:
         if: steps.catalog.outputs.mode == 'legacy'
         with:
           python-version: "3.11"
-      - name: 시간대로 그룹(샤드) 결정
+      - name: Restore legacy progress
         if: steps.catalog.outputs.mode == 'legacy'
-        run: echo "SHARD=$(( $(date -u +%s) / 1800 % 6 ))" >> "$GITHUB_ENV"
+        uses: actions/cache/restore@v4
+        with:
+          path: legacy-slot-progress.json
+          key: legacy-slot-progress-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: legacy-slot-progress-
       - name: Ingest slots → RDS (백엔드 internal API)
+        id: ingest
         if: steps.catalog.outputs.mode == 'legacy'
         env:
           # 새로 생긴 빈자리를 백엔드 알림으로 밀어줌 (없으면 알림만 skip, 수집은 정상)
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
-          NUM_SHARDS: "6"
+          LEGACY_SLOT_CURSOR: "legacy-slot-progress.json"
           BUDGET_SEC: "780"
         run: python scraper/slot_ingest.py
+      - name: Save confirmed legacy progress
+        if: always() && steps.ingest.outputs.progress == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: legacy-slot-progress.json
+          key: legacy-slot-progress-${{ github.run_id }}-${{ github.run_attempt }}
