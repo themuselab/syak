@@ -1,9 +1,9 @@
-"""Bounded ordinary-shop metadata and near-term availability from one serial logical shard."""
+"""Bounded ordinary-shop metadata and near-term availability with serial source access."""
 import argparse
 import json
 import re
 import time
-from collections import Counter
+from collections import Counter, deque
 from datetime import datetime,timedelta
 from urllib.error import HTTPError,URLError
 
@@ -85,22 +85,43 @@ def fast_slots(shop,budget):
     return ('updated' if result['applied'] else 'not-eligible'),{}
 
 
+def due_targets(kind, limit=64):
+    # Scheduling delays can repeatedly land on the same wall-clock partition.
+    # The private queries retrieve only due shops. Each source request remains serial.
+    lanes = [[], []]
+    for part in range(8):
+        page = api_get(f'/internal/shops/public-metadata?kind={kind}&part={part}&limit={limit}')
+        if not page['ready']:
+            return None
+        for row in page['targets']:
+            lanes[int(row['lane'])].append(row)
+    def age(row):
+        return row['attempted'] or '', str(row['id'])
+    preferred, fair = [deque(sorted(rows, key=age)) for rows in lanes]
+    if preferred and fair and age(fair[0]) < age(preferred[0]):
+        preferred, fair = fair, preferred
+    ordered = []
+    while (preferred or fair) and len(ordered) < limit:
+        for lane in (preferred, fair):
+            if lane and len(ordered) < limit:
+                ordered.append(lane.popleft())
+    return ordered
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('kind',choices=['slots','metadata'])
     args=parser.parse_args()
     kind=args.kind
-    period=900 if kind=='slots' else 3600
-    part=int(time.time()//period)%8
     budget=SourceBudget(time.monotonic()+510)
     counts=Counter()
     try:
         budget.check()
-        payload=api_get(f'/internal/shops/public-metadata?kind={kind}&part={part}&limit=64')
-        if not payload['ready']:
+        targets=due_targets(kind)
+        if targets is None:
             print('Public candidate seed pending')
             return
-        for shop in payload['targets']:
+        for shop in targets:
             budget.check()
             observed=stamp()
             shop['_at']=observed
@@ -120,12 +141,14 @@ def main():
                 if time.monotonic()>=budget.deadline:
                     break
                 outcome,data='unavailable',{}
-            api_post('/internal/shops/public-metadata',
+            result=api_post('/internal/shops/public-metadata',
                      {'id':str(shop['id']),'kind':kind,'observedAt':observed,'outcome':outcome,'data':data})
-            counts[outcome]+=1
+            if type(result.get('applied')) is not bool:
+                raise RuntimeError('Invalid internal refresh acknowledgement')
+            counts[outcome if result['applied'] else 'skipped_changed'] += 1
     except SourcePaused as pause:
         print(str(pause))
-    print(json.dumps({'kind':kind,'shard':part,'counts':counts}))
+    print(json.dumps({'kind':kind,'counts':counts}))
 
 
 if __name__=='__main__':

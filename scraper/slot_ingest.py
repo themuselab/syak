@@ -287,6 +287,38 @@ def clean_item_name(name):
     return (n[:14] or "예약")
 
 
+def resume_legacy_targets(targets, cursor):
+    if cursor is None:
+        random.shuffle(targets)
+        return targets, 0
+    targets = sorted(targets, key=lambda item: str(item["id"]))
+    position = json.loads(cursor.read_text())["nextPosition"] if cursor.is_file() else 0
+    if type(position) is not int or position < 0:
+        raise ValueError("Invalid legacy progress position")
+    position %= max(1, len(targets))
+    return targets[position:] + targets[:position], position
+
+
+def checkpoint_legacy(cursor, position, targets, completed, total):
+    if cursor is None:
+        return
+    # Incomplete shops remain first on the next run. A fully inspected unavailable
+    # shop advances the cursor without replacing its last confirmed calendar.
+    advanced = 0
+    for shop in targets:
+        if completed[shop["id"]] != total[shop["id"]]:
+            break
+        advanced += 1
+    if not advanced:
+        return
+    pending = cursor.with_suffix(".tmp")
+    pending.write_text(json.dumps({"nextPosition": (position + advanced) % len(targets)}))
+    pending.replace(cursor)
+    if os.environ.get("GITHUB_OUTPUT"):
+        with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+            output.write("progress=true\n")
+
+
 def main():
     # KST 기준 오늘 (Actions는 UTC라 +9)
     kst = timezone(timedelta(hours=9))
@@ -295,8 +327,15 @@ def main():
     tomorrow_ymd = (today + timedelta(days=1)).strftime("%Y-%m-%d")
     end_ymd = (today + timedelta(days=DAYS - 1)).strftime("%Y-%m-%d")
 
-    targets = load_targets(legacy=True)
-    random.shuffle(targets)
+    from general_source_budget import SourceBudget, SourcePaused
+    budget = SourceBudget(time.monotonic() + BUDGET_SEC)
+    try:
+        budget.check()
+    except SourcePaused:
+        print("Shared source cooldown; no legacy slot observations or writes")
+        return
+    cursor = Path(ENV["LEGACY_SLOT_CURSOR"]) if ENV.get("LEGACY_SLOT_CURSOR") else None
+    targets, position = resume_legacy_targets(load_targets(legacy=True), cursor)
     # Keep all service items for a shop together; only complete shops are saved.
     tasks = expand_tasks(targets)
     # shop_id → {item_id: 이름} (상세 표시용)
@@ -313,8 +352,8 @@ def main():
     t0 = time.time()
     deadline = t0 + BUDGET_SEC                      # 예산 초과 시 멈추고 받은 것만 저장
     timed_out = False
-    from general_source_budget import SourceBudget, SourcePaused
-    budget = SourceBudget(time.monotonic() + BUDGET_SEC)
+    restricted = False
+    completed = Counter()
     for t in tasks:
         if time.time() > deadline:
             timed_out = True
@@ -336,17 +375,23 @@ def main():
         except (ScheduleAccessRestricted,urllib.error.HTTPError) as exc:
             if isinstance(exc,ScheduleAccessRestricted) or exc.code in (401,403,429,503):
                 budget.blocked(exc)
+                restricted = True
                 break
             err += 1
             err_shops.add(t["id"])
         except (ValueError,urllib.error.URLError,TimeoutError):
             err += 1
             err_shops.add(t["id"])
+        completed[t["id"]] += 1
     # 모든 item이 성공한 샵만 갱신. 미완(예산초과)·실패 샵은 옛 슬롯 보존 → 빈자리 증발 방지.
     safe_ids = [sid for sid in shop_total if shop_done[sid] == shop_total[sid] and sid not in err_shops]
     safe_set = set(safe_ids)
     if not safe_ids:
-        print("No complete shop observations to commit")
+        print(f"No complete shop observations to commit: tasks={len(tasks)} successful_items={ok} failed_items={err} "
+              f"budget_or_pause={timed_out} source_restricted={restricted}")
+        checkpoint_legacy(cursor, position, targets, completed, shop_total)
+        if err and not ok and not (timed_out or restricted):
+            raise RuntimeError("All attempted legacy slot observations failed")
         return
     rows = [v for v in seen.values() if v["shop_id"] in safe_set]
     print(f"   조회: 성공 {ok} 실패 {err}{' ⏱️예산초과(부분저장)' if timed_out else ''} | 갱신 {len(safe_ids)}곳 | 빈슬롯 {len(rows)}행 | {time.time()-t0:.0f}초")
@@ -361,6 +406,8 @@ def main():
     new_by_shop = {}
     try:
         resp = slot_sync(payload)
+        if type(resp.get('inserted')) is not int or type(resp.get('newCount')) is not int or not isinstance(resp.get('newSlots'), list):
+            raise ValueError('Invalid slot write acknowledgement')
         print(f"✅ RDS 동기화: {resp.get('inserted', 0)}행 ({start_ymd}~{end_ymd}) · 신규 {resp.get('newCount', 0)}")
         per_day = {}  # (샵, 날짜) → 시간들. 도배 방지 상한은 샵·날짜 단위
         for ns in resp.get("newSlots", []):
@@ -368,8 +415,8 @@ def main():
         for (sid, d), ts in per_day.items():
             if len(ts) <= MAX_NEW_PER_SHOP:
                 new_by_shop.setdefault(sid, []).extend((d, t) for t in ts)
-    except Exception as e:
-        print(f"   ⚠️ 슬롯 RDS 동기화 실패: {e}")
+    except Exception:
+        raise RuntimeError("Slot snapshot write failed; summaries and notifications were not applied") from None
     try:
         notify_new_slots(new_by_shop)
     except Exception as e:
@@ -394,10 +441,13 @@ def main():
     for i in range(0, len(sum_rows), 500):
         try:
             r = api_post("/internal/shops/summary", {"rows": sum_rows[i:i+500]})
-            up += r.get("updated", 0)
-        except Exception as e:
-            print(f"   ⚠️ slot_summary 갱신 실패: {e}")
+            if type(r.get("updated")) is not int:
+                raise ValueError("Invalid summary acknowledgement")
+            up += r["updated"]
+        except Exception:
+            raise RuntimeError("Slot summary write failed") from None
     print(f"✅ slot_summary 갱신(RDS): {up}곳")
+    checkpoint_legacy(cursor, position, targets, completed, shop_total)
     # 초록핀(today_open)은 별도 가벼운 잡(today-open.yml)이 재계산 — 무거운 수집과 분리(타임아웃 방지)
 
 
