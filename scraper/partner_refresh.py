@@ -15,6 +15,8 @@ from datetime import datetime, timedelta, timezone
 
 from slot_ingest import api_get, api_post, notify_new_slots, QUERY, GQL
 
+import partner_source_gate as source_gate
+
 KST = timezone(timedelta(hours=9))
 BUDGET = int(os.environ.get("PARTNER_BUDGET_SEC", "210"))
 
@@ -43,8 +45,10 @@ async def fetch_partner_detail(page, shop_id, deadline):
         if remaining <= 0:
             raise TimeoutError("Detail budget exhausted")
         try:
-            await page.goto(f"https://pcmap.place.naver.com/place/{shop_id}/home",
+            response = await page.goto(f"https://pcmap.place.naver.com/place/{shop_id}/home",
                             wait_until="domcontentloaded", timeout=min(25000, int(remaining * 1000)))
+            if source_gate.enabled() and response is not None:
+                source_gate.record(response.status, response.headers.get("retry-after"))
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise TimeoutError("Detail budget exhausted")
@@ -61,6 +65,8 @@ async def fetch_partner_detail(page, shop_id, deadline):
             if not detail.get("name_detail"):
                 raise ValueError("Incomplete place detail")
             return apollo, detail
+        except source_gate.PartnerSourcePaused:
+            raise
         except Exception:
             if attempt or time.monotonic() + 2 >= deadline:
                 raise
@@ -157,7 +163,9 @@ def event_for(shop, deadline=None):
                 raise EventPageUnavailable("Event page unavailable; previous event preserved")
             desc, price = parse_event(html)
             return {"event_desc": desc, "event_price": price}
-        except (ValueError, urllib.error.URLError, TimeoutError):
+        except (ValueError, urllib.error.URLError, TimeoutError) as exc:
+            if isinstance(exc, urllib.error.HTTPError):
+                source_gate.record(exc.code, exc.headers.get("Retry-After"))
             if attempt or (deadline is not None and time.monotonic() + 2 >= deadline):
                 raise
             report(f"Retrying incomplete event: {shop['id']}")
@@ -178,13 +186,17 @@ def fast():
                warning=bool(deferred or errors or budget))
         return errors + int(degraded)
     # Each kind fetches its own live membership list. A page holds at most 50 shops.
-    for kind, collect in [("events", event_for), ("slots", slots_for)]:
+    collectors = [("events", event_for)]
+    if os.environ.get("PARTNER_SLOT_COLLECTOR", "github") == "github":
+        collectors.append(("slots", slots_for))
+    for kind, collect in collectors:
         for batch in pages(kind):
             for shop in batch:
                 if time.monotonic() >= deadline:
                     return finish(budget=True)
                 if not shop.get("due"):
                     continue
+                source_gate.check()
                 observed = stamp()
                 attempted += 1
                 collecting = True
@@ -208,6 +220,8 @@ def fast():
                                 notify_new_slots({str(shop["id"]): times})
                             except Exception:
                                 print(f"Notification failed for {shop['id']}; data committed", flush=True)
+                except source_gate.PartnerSourcePaused:
+                    raise
                 except HourlyScheduleUnavailable:
                     unavailable += 1
                     report(f"Hourly calendar unavailable: shop={shop['id']}; no slot write or notification", warning=True)
@@ -244,6 +258,7 @@ async def details():
                     if time.monotonic() >= deadline:
                         report("Detail budget exhausted with due partners remaining", warning=True)
                         return errors + 1
+                    source_gate.check()
                     observed = stamp()
                     # Close each context to release Apollo state, images and page resources.
                     context = await browser.new_context(user_agent=UA, locale="ko-KR")
@@ -299,6 +314,8 @@ async def details():
                         result = apply(shop, "details", observed, payload)
                         del apollo, blob, model, record
                         print(f"Details {'refreshed' if result.get('applied') else 'skipped'}: {shop['id']}", flush=True)
+                    except source_gate.PartnerSourcePaused:
+                        raise
                     except Exception as exc:
                         errors += 1
                         reason = str(exc)[:120] if isinstance(exc, ValueError) else ""
@@ -311,5 +328,10 @@ async def details():
 
 
 if __name__ == "__main__":
-    errors = asyncio.run(details()) if "details" in sys.argv else fast()
+    try:
+        source_gate.check()
+        errors = asyncio.run(details()) if "details" in sys.argv else fast()
+    except source_gate.PartnerSourcePaused as exc:
+        report("Partner source paused: " + str(exc), warning=True)
+        errors = 0
     sys.exit(1 if errors else 0)

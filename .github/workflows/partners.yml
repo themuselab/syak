@@ -14,6 +14,10 @@ on:
 permissions:
   contents: read
 
+env:
+  PARTNER_SOURCE_GUARD: "1"
+  PARTNER_SLOT_COLLECTOR: ${{ vars.PARTNER_SLOT_COLLECTOR || 'github' }}
+
 jobs:
   fast:
     if: github.event.schedule != '11 * * * *' && github.event.inputs.mode != 'details'
