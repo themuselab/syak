@@ -17,30 +17,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: 공인 IP
-        run: curl -s https://api.ipify.org; echo
-      - name: 하나씩(0.3초 간격)
+      - name: Check booking and Place responses through the shared request budget
         env:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
-        run: python scraper/diag_events.py ${{ github.event.inputs.n }} 1
-      - name: 동시 12개(운영과 같음)
-        env:
-          API_BASE_URL: ${{ secrets.API_BASE_URL }}
-          INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
-        run: python scraper/diag_events.py ${{ github.event.inputs.n }} 12
-      - name: 다시 하나씩(동시 요청 직후)
-        env:
-          API_BASE_URL: ${{ secrets.API_BASE_URL }}
-          INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
-        run: python scraper/diag_events.py ${{ github.event.inputs.n }} 1
-      - name: 플레이스(가격) 페이지 · 간격 2초
-        env:
-          API_BASE_URL: ${{ secrets.API_BASE_URL }}
-          INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
-        run: python scraper/diag_place.py 40 2
-      - name: 플레이스(가격) 페이지 · 간격 0.5초
-        env:
-          API_BASE_URL: ${{ secrets.API_BASE_URL }}
-          INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
-        run: python scraper/diag_place.py 40 0.5
+          SAMPLE_COUNT: ${{ inputs.n }}
+        run: python scraper/public_source_diagnostics.py

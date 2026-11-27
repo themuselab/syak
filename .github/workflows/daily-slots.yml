@@ -1,0 +1,118 @@
+name: daily-verified-slots
+
+on:
+  schedule:
+    - cron: '17 15 * * *' # 00:17 KST
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-verified-slots
+  cancel-in-progress: false
+
+jobs:
+  catalog:
+    permissions:
+      contents: read
+      actions: read
+    timeout-minutes: 35
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.check.outputs.mode }}
+      version: ${{ steps.check.outputs.version }}
+      parts: ${{ steps.check.outputs.parts || '[0]' }}
+      end_epoch: ${{ steps.check.outputs.end_epoch }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
+        run: python3 scraper/daily_slots.py mode --published 20261128 >> "$GITHUB_OUTPUT"
+      - name: Wait for previous nationwide writers
+        if: steps.check.outputs.mode == 'daily'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # A legacy run may have read the pending state moments before publication, even on the same SHA.
+          for attempt in {1..60}; do
+            old=0
+            for state in queued in_progress waiting requested pending; do
+              total=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/slots.yml/runs?status=$state&per_page=1" --jq '.total_count')
+              if (( total > 0 )); then old=1; fi
+            done
+            if (( ! old )); then exit 0; fi
+            sleep 30
+          done
+          echo 'Previous nationwide slot run still active; daily writes deferred.'
+          exit 1
+
+  refresh:
+    needs: catalog
+    if: needs.catalog.outputs.mode == 'daily'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      # Run serially. Source restrictions or failed RDS writes stop the entire run.
+      max-parallel: 1
+      fail-fast: true
+      matrix:
+        part: ${{ fromJSON(needs.catalog.outputs.parts) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/cache/restore@v4
+        with:
+          path: slot-source-pause.json
+          key: daily-slots-source-pause-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: daily-slots-source-pause-
+      - uses: actions/cache/restore@v4
+        with:
+          path: slot-cursor-${{ matrix.part }}.json
+          key: daily-slots-cursor-${{ matrix.part }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: daily-slots-cursor-${{ matrix.part }}-
+      - name: Read and save verified booking times
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
+        run: >-
+          python scraper/daily_slots.py run --published 20261128 --version "${{ needs.catalog.outputs.version }}"
+          --part "${{ matrix.part }}" --parts 8
+          --budget-seconds 9750 --end-epoch "${{ needs.catalog.outputs.end_epoch }}"
+          --cursor "slot-cursor-${{ matrix.part }}.json"
+      - uses: actions/cache/save@v4
+        if: always() && hashFiles(format('slot-cursor-{0}.json', matrix.part)) != ''
+        with:
+          path: slot-cursor-${{ matrix.part }}.json
+          key: daily-slots-cursor-${{ matrix.part }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - uses: actions/cache/save@v4
+        if: failure() && hashFiles('slot-source-pause.json') != ''
+        with:
+          path: slot-source-pause.json
+          key: daily-slots-source-pause-${{ github.run_id }}-${{ github.run_attempt }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: daily-slots-${{ matrix.part }}
+          path: slot-reports/*.json
+          if-no-files-found: ignore
+          overwrite: true
+          retention-days: 7
+
+  coverage:
+    needs: refresh
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: daily-slots-*
+          path: slot-reports
+          merge-multiple: true
+      - run: python3 scraper/daily_slots.py report --parts 8 | tee -a "$GITHUB_STEP_SUMMARY"
+        shell: bash

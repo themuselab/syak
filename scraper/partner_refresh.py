@@ -11,18 +11,15 @@ import sys
 import time
 import urllib.request
 import urllib.error
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
-from slot_ingest import api_get, api_post, notify_new_slots, QUERY, GQL
+from slot_ingest import (api_get, api_post, notify_new_slots, QUERY, GQL, decode_slots,
+                         HourlyScheduleUnavailable, ScheduleAccessRestricted)
 
 import partner_source_gate as source_gate
 
 KST = timezone(timedelta(hours=9))
 BUDGET = int(os.environ.get("PARTNER_BUDGET_SEC", "210"))
-
-
-class HourlyScheduleUnavailable(ValueError):
-    """The item exists, but does not publish an hourly calendar."""
 
 
 class EventPageUnavailable(ValueError):
@@ -96,38 +93,13 @@ def apply(shop, kind, observed_at, data):
     })
 
 
-def decode_slots(raw):
-    if raw.get("errors"):
-        raise ValueError("Schedule returned errors")
-    item_schedule = (((raw.get("data") or {}).get("schedule") or {}).get("bizItemSchedule") or {})
-    if isinstance(item_schedule, dict) and "hourly" in item_schedule and item_schedule["hourly"] is None:
-        raise HourlyScheduleUnavailable("Hourly calendar not provided; previous slots preserved")
-    hourly = item_schedule.get("hourly")
-    if not isinstance(hourly, list):
-        raise ValueError("Schedule missing; preserving previous slots")
-    result = []
-    for row in hourly:
-        if not isinstance(row, dict) or not isinstance(row.get("isUnitBusinessDay"), bool) or not isinstance(row.get("isUnitSaleDay"), bool):
-            raise ValueError("Invalid schedule row")
-        if not row["isUnitBusinessDay"] or not row["isUnitSaleDay"]:
-            continue
-        value = row.get("unitStartTime", "")
-        if not re.match(r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}", value):
-            raise ValueError("Invalid schedule time")
-        stock = row.get("stock")
-        if stock is not None and (row.get("bookingCount") or 0) >= stock:
-            continue
-        result.append((value[:10], value[11:16]))
-    return result
-
-
-def slots_for(shop, start, end, deadline=None):
+def slots_for(shop, start, end, deadline=None, after_request=None, before_request=None):
     items = list(dict.fromkeys(shop.get("item_ids") or ([shop["item_id"]] if shop.get("item_id") else [])))
     if not shop.get("biz_id") or not items:
         return None
     all_slots, tomorrow = set(), {}
     names = {str(i.get("id")): i.get("name") or "예약" for i in shop.get("items") or []}
-    next_date = (datetime.now(KST).date() + timedelta(days=1)).isoformat()
+    next_date = (date.fromisoformat(start) + timedelta(days=1)).isoformat()
     for item in items:
         if deadline is not None and time.monotonic() >= deadline:
             raise TimeoutError("Incomplete shop; preserving previous snapshot")
@@ -137,11 +109,20 @@ def slots_for(shop, start, end, deadline=None):
             "fixedTime": True, "includesHolidaySchedules": True,
         }}}
         req = urllib.request.Request(GQL, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=15) as response:
-            rows = decode_slots(json.load(response))
+        if before_request is not None:
+            before_request()
+        try:
+            with urllib.request.urlopen(req, timeout=15) as response:
+                if response.headers.get_content_type() == "text/html":
+                    raise ScheduleAccessRestricted("Expected schedule JSON; received HTML")
+                rows = decode_slots(json.load(response), start, end)
+        finally:
+            if after_request is not None:
+                after_request()
         all_slots.update(rows)
         tomorrow.setdefault(names.get(str(item), "예약"), set()).update(t for d, t in rows if d == next_date)
-        time.sleep(0.4)
+        if after_request is None:
+            time.sleep(0.4)
     summary = [{"name": name[:40], "times": sorted(times)[:12]} for name, times in sorted(tomorrow.items(), key=lambda p: -len(p[1]))][:6]
     return {"startDate": start, "endDate": end, "slots": [{"date": d, "startTime": t} for d, t in sorted(all_slots)], "summary": summary}
 

@@ -11,7 +11,7 @@ env: API_BASE_URL, INTERNAL_API_KEY  (로컬은 같은 폴더 .env)
 2달간 매일 실패했다(앱 할인 정보가 8월에 멈춤) → 2026-10-22 백엔드로 이전.
 """
 import json, os, random, re, sys, threading, time, urllib.error, urllib.request, zlib
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from general_source_budget import SourceBudget,SourcePaused
 from pathlib import Path
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -159,19 +159,28 @@ def parse_event(html):
     return None, None
 
 
-def fetch_one(r):
+def fetch_one(r,budget=None):
     # 껍데기 페이지(속도 제한)는 바로 재시도하면 더 막힌다 → 이번 회차는 건너뛰고(기존값 보존) 전체 속도를 늦춘다.
     item = (r.get("item_ids") or ([r["item_id"]] if r.get("item_id") else [None]))[0]
     if not item:
         return r["id"], None, None
     url = f"https://m.booking.naver.com/booking/{r.get('biz_type') or 13}/bizes/{r['biz_id']}/items/{item}"
     PACE.wait()
+    if budget:
+        budget.before("booking")
     try:
         html = urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=20).read().decode("utf-8", "ignore")
-    except Exception:
+    except urllib.error.HTTPError as exc:
+        if budget and exc.code in (401,403,429,503):
+            budget.blocked(exc)
+            raise SourcePaused("Shared source restriction") from None
+        return r["id"], "__ERR__", None
+    except (OSError,ValueError):
         return r["id"], "__ERR__", None
     # 유효 예약페이지는 항상 eventDescJson 포함 → 없으면 속도 제한에 걸린 껍데기 페이지
     if "eventDescJson" not in html:
+        if budget:
+            budget.check_access_page(html)
         PACE.blocked()
         return r["id"], "__ERR__", None
     try:
@@ -205,13 +214,13 @@ def main():
     rows, found, err = [], 0, 0
     done = 0
     timed_out = False
-    ex = ThreadPoolExecutor(max_workers=WORKERS)
-    futs = [ex.submit(fetch_one, r) for r in targets]
-    for fut in as_completed(futs):
-        if time.time() > deadline:
+    budget = SourceBudget(time.monotonic()+BUDGET_SEC)
+    for row in targets:
+        try:
+            sid, ed, ep = fetch_one(row,budget)
+        except SourcePaused:
             timed_out = True
             break
-        sid, ed, ep = fut.result()
         if ed == "__ERR__":
             err += 1
             continue  # 에러/차단은 기존값 보존 (덮어쓰지 않음)
@@ -221,7 +230,6 @@ def main():
         done += 1
         if (done + err) % 2000 == 0:
             print(f"   …{done+err:,}곳 ({time.time()-t0:.0f}초, 할인 {found}, 차단/에러 {err})", flush=True)
-    ex.shutdown(wait=False, cancel_futures=True)  # 남은 작업 취소 → 예산 내 종료
     if timed_out:
         print(f"   ⏱️ 예산({BUDGET_SEC}s) 초과 → {done+err:,}곳까지만 처리(나머지 다음 회차)", flush=True)
     # 중간 저장 (컬럼 없거나 업서트 실패해도 재수집 불필요)
