@@ -7,9 +7,11 @@ import json
 import re
 from pathlib import Path
 from datetime import datetime
-from build_read_model import build_summary, build_detail, min_menu_price, SUPPRESSED_IDS
+from build_read_model import build_summary, build_detail, min_menu_price, SUPPRESSED_IDS, SPECIFIC_SALON_CATEGORIES
 
 VERIFIED_CATEGORIES = {
+    **SPECIFIC_SALON_CATEGORIES,
+    '남성전문미용실': '헤어',
     '안마,마사지,지압': '마사지', '스포츠마사지': '마사지', '마사지': '마사지',
     '피부,체형관리': '피부', '미용문신,반영구화장': '반영구',
     '속눈썹증모,연장': '속눈썹', '왁싱,제모': '왁싱', '태닝': '태닝',
@@ -71,7 +73,7 @@ def build_verified_row(record):
         if raw['priceText']:
             menu['priceText'] = raw['priceText']
     detail['sourceCategoryCheckedAt'] = checked_at
-    detail['catalogImportBatch'] = 'verified-refill-20261125'
+    detail['catalogImportBatch'] = 'verified-refill-' + checked_at[:10].replace('-', '')
     if record.get('businessHours'):
         detail['businessHours'] = record['businessHours']
     bookings = [(re.search(r'/booking/(\d+)/bizes/(\d+)(?:/items/(\d+))?', b['bookingUrl']), b)

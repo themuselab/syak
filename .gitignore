@@ -37,6 +37,7 @@ public/data/
 scraper/__pycache__/
 **/__pycache__/
 *.pyc
+scraper/catalog-audit-complete.json
 scraper/events_cache.json
 scraper/*.log
 

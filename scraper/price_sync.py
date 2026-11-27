@@ -8,13 +8,13 @@
   최근 방문자 리뷰(방문일 포함)를 detail에 합친다(POST /internal/shops/details, 2026-10-22).
   리뷰 페이지가 막혀도 가격·영업시간은 저장한다(리뷰만 다음 회차).
 - 처리한 샵은 price_synced_at=now 도장 → 다음 런은 그 다음 오래된 샵
-- 매 런 다른 러너 IP + 시간예산 + 차단 시 건너뜀(도장 안 찍음 → 다음에 재시도)
+- 중앙 요청 예산과 대기 상태를 확인하며 샵을 순서대로 처리한다.
 
 env: SUPABASE_URL, SUPABASE_SECRET_KEY (.env 또는 Actions Secrets)
 """
 import json, os, re, sys, threading, time, random, urllib.request, urllib.error
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from general_source_budget import SourceBudget, SourcePaused
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -146,13 +146,15 @@ ERRS = Counter()  # 실패 종류(로그용)
 STOP_AFTER_429 = int(ENV.get("PRICE_STOP_AFTER_429", "3"))
 
 
-def fetch_state(url):
+def fetch_state(url,budget=None):
     """네이버 place 페이지의 __APOLLO_STATE__. 차단/실패면 None."""
     if ERRS["http_429"] >= STOP_AFTER_429:
         return None  # 한도 소진 — 더 요청하지 않는다
     PACE.wait()
     html = None
     for attempt in range(2):  # 네트워크 예외만 1회 재시도 (차단은 재시도 안 함)
+        if budget:
+            budget.before("place")
         try:
             req = urllib.request.Request(url, headers=HEADERS)
             with urllib.request.urlopen(req, timeout=15) as r:
@@ -160,6 +162,10 @@ def fetch_state(url):
             break
         except urllib.error.HTTPError as e:
             ERRS[f"http_{e.code}"] += 1
+            if e.code in (401,403,429,503):
+                if budget:
+                    budget.blocked(e)
+                    raise SourcePaused("Shared source cooldown") from None
             if e.code in (403, 429):  # 속도 제한 응답 → 바로 재시도하지 말고 전체를 늦춘다
                 PACE.blocked()
                 return None
@@ -174,6 +180,8 @@ def fetch_state(url):
     key = "window.__APOLLO_STATE__ = "
     i = html.find(key)
     if i < 0:
+        if budget:
+            budget.check_access_page(html)
         PACE.blocked()
         return None  # 속도 제한 페이지 or 비정상 → 다음 런 재시도
     PACE.ok()
@@ -234,9 +242,9 @@ def parse_source_category(obj, shop_id):
     return {}
 
 
-def fetch_place(shop_id):
+def fetch_place(shop_id,budget=None):
     """place home → {menus, hours, rating}. None = 차단/실패(도장 안 찍음)."""
-    obj = fetch_state(f"https://pcmap.place.naver.com/place/{shop_id}/home")
+    obj = fetch_state(f"https://pcmap.place.naver.com/place/{shop_id}/home",budget)
     if obj is None:
         return None
     menus = []
@@ -249,29 +257,13 @@ def fetch_place(shop_id):
             **parse_source_category(obj, shop_id)}
 
 
-def fetch_reviews(shop_id):
+def fetch_reviews(shop_id,budget=None):
     """방문자 리뷰 페이지 → 최근 리뷰(방문일 포함) 최대 REVIEWS_MAX개. 실패/없음이면 None."""
-    obj = fetch_state(f"https://pcmap.place.naver.com/place/{shop_id}/review/visitor")
+    obj = fetch_state(f"https://pcmap.place.naver.com/place/{shop_id}/review/visitor",budget)
     if obj is None:
         return None
-    out = []
-    for v in obj.values():
-        if not (isinstance(v, dict) and v.get("__typename") == "VisitorReview" and v.get("body")):
-            continue
-        if v.get("status") not in (None, "ACTIVE"):
-            continue
-        out.append({
-            "body": v.get("body"),
-            "images": [m.get("thumbnail") for m in (v.get("media") or [])
-                       if m and m.get("type") == "image" and m.get("thumbnail")][:4],
-            "keywords": [k.get("name") for k in (v.get("votedKeywords") or []) if k and k.get("name")],
-            "ownerReply": (v.get("reply") or {}).get("body"),
-            "visited": v.get("visited"),  # "10.8.목" — 앱에 그대로 표시
-            "visitedAt": v.get("representativeVisitDateTime"),
-        })
-    # 페이지 순서는 추천순이라 날짜가 섞여 있다 → 최근 방문 순으로
-    out.sort(key=lambda x: x.get("visitedAt") or "", reverse=True)
-    return out[:REVIEWS_MAX]  # [] = 확인했는데 리뷰 없음, None = 못 받음
+    from catalog_place_observations import observations
+    return observations(obj,{}, {},str(shop_id)).get('reviews')
 
 
 REVIEWS_EVERY_DAYS = 7  # 리뷰는 자주 안 바뀐다 → 7일에 한 번만(샵당 요청 2→1장, 한도 안에서 갱신 샵 수 2배)
@@ -287,11 +279,14 @@ def reviews_due(t):
         return True
 
 
-def fetch_one(t):
-    place = fetch_place(t["id"])
+def fetch_one(t,budget=None):
+    place = fetch_place(t["id"],budget)
     if place is None:
         return None
-    place["reviews"] = fetch_reviews(t["id"]) if reviews_due(t) else None
+    try:
+        place["reviews"] = fetch_reviews(t["id"],budget) if reviews_due(t) else None
+    except SourcePaused:
+        place["reviews"] = None
     return place
 
 
@@ -303,23 +298,21 @@ def load_targets():
 
 def main():
     targets = load_targets()
-    print(f"💰 가격 동기화 대상: {len(targets)}곳 (손님 눈에 띄는 샵 우선) | workers {WORKERS} budget {BUDGET_SEC}s")
+    print(f"💰 가격 동기화 대상: {len(targets)}곳 (손님 눈에 띄는 샵 우선) | budget {BUDGET_SEC}s")
     now_iso = datetime.now(timezone.utc).isoformat()
     updates, dist = [], Counter()
     ok = blocked = 0
     t0 = time.time()
     deadline = t0 + BUDGET_SEC
-    ex = ThreadPoolExecutor(max_workers=WORKERS)
+    budget = SourceBudget(time.monotonic()+BUDGET_SEC)
     details = []
-    futs = {ex.submit(fetch_one, t): t for t in targets}
-    for fut in as_completed(futs):
+    for t in targets:
         if time.time() > deadline:
             break
-        t = futs[fut]
         try:
-            place = fut.result()
-        except Exception:
-            place = None
+            place = fetch_one(t,budget)
+        except SourcePaused:
+            break
         if place is None:           # 차단/실패 → 도장 안 찍음(다음 런 재시도)
             blocked += 1
             continue
@@ -343,7 +336,6 @@ def main():
         dist[tr] += 1
         ok += 1
         updates.append({"id": t["id"], "min_price": p, "price_tier": tr, "price_synced_at": now_iso})
-    ex.shutdown(wait=False, cancel_futures=True)
 
     # 갱신 (min_price/price_tier + 도장). detail.menus는 v2에서 별도 갱신 예정.
     up = 0

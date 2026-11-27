@@ -10,7 +10,6 @@ env: SUPABASE_URL, SUPABASE_SECRET_KEY  (GitHub Actions Secrets에서 주입)
 """
 import json, random, os, re, sys, time, urllib.request, urllib.error, zlib
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -27,7 +26,7 @@ if _local.exists():
         if "=" in line and not line.strip().startswith("#"):
             k, v = line.split("=", 1)
             ENV.setdefault(k.strip(), v.strip())
-# 샤딩 — 분할 실행(각 러너 다른 IP/시간, 25분 차단선 안 넘게). 미설정 시 단일.
+# 요청 예산을 공유하며 논리 샤드를 차례로 확인한다.
 SHARD = int(ENV.get("SHARD", "0"))
 NUM_SHARDS = int(ENV.get("NUM_SHARDS", "1"))
 # 시간 예산(초) — 이만큼 지나면 수집 멈추고 받은 것만 저장 → 타임아웃으로 죽지 않음
@@ -176,10 +175,10 @@ def notify_new_slots(new_by_shop):
     print(f"🔔 새 빈자리 알림: {len(new_by_shop)}곳 / {sent}건 dispatch")
 
 
-def load_targets():
+def load_targets(legacy=False):
     """biz_id 있는 가게 = 온라인 예약 가능. 백엔드 internal API(RDS)에서 타깃 로드.
     item_ids(전 디자이너/서비스) × biz_type 포함."""
-    out = api_get("/internal/shops/targets").get("targets", [])
+    out = api_get("/internal/shops/targets" + ("?legacy=1" if legacy else "")).get("targets", [])
     if NUM_SHARDS > 1:  # 이 러너 담당 샤드만 (안정적 해시 분할)
         out = [r for r in out if zlib.crc32(str(r["id"]).encode()) % NUM_SHARDS == SHARD]
     return out
@@ -198,37 +197,85 @@ def expand_tasks(targets):
     return tasks
 
 
-def fetch_slots(biz_type, biz_id, item_id, start_ymd, end_ymd, tries=3):
+class HourlyScheduleUnavailable(ValueError):
+    """The item exists, but does not publish an hourly calendar."""
+
+
+class ScheduleAccessRestricted(ValueError):
+    """The source asks the collector to stop requesting schedules."""
+
+
+def decode_slots(raw, start=None, end=None):
+    if not isinstance(raw, dict):
+        raise ValueError("Invalid schedule envelope")
+    if raw.get("errors"):
+        if re.search(r"rate.limit|too many requests|forbidden|요청.{0,12}(제한|초과)|접근.{0,8}제한",
+                     json.dumps(raw["errors"], ensure_ascii=False), re.I):
+            raise ScheduleAccessRestricted("Schedule access restricted")
+        raise ValueError("Schedule returned errors")
+    item_schedule = raw
+    for field in ("data", "schedule", "bizItemSchedule"):
+        item_schedule = item_schedule.get(field) if isinstance(item_schedule, dict) else None
+    if not isinstance(item_schedule, dict):
+        raise ValueError("Incomplete schedule")
+    if isinstance(item_schedule, dict) and "hourly" in item_schedule and item_schedule["hourly"] is None:
+        raise HourlyScheduleUnavailable("Hourly calendar not provided; previous slots preserved")
+    hourly = item_schedule.get("hourly")
+    if not isinstance(hourly, list):
+        raise ValueError("Schedule missing; preserving previous slots")
+    result = []
+    for row in hourly:
+        if not isinstance(row, dict) or not isinstance(row.get("isUnitBusinessDay"), bool) or not isinstance(row.get("isUnitSaleDay"), bool):
+            raise ValueError("Invalid schedule row")
+        value = row.get("unitStartTime", "")
+        if not isinstance(value, str) or not re.match(r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}", value):
+            raise ValueError("Invalid schedule time")
+        datetime.fromisoformat(value)
+        if start and end and not start <= value[:10] <= end:
+            raise ValueError("Calendar outside requested date window")
+        if not row["isUnitBusinessDay"] or not row["isUnitSaleDay"]:
+            continue
+        if "stock" not in row or "bookingCount" not in row:
+            raise ValueError("Missing schedule capacity")
+        stock, booked = row["stock"], row["bookingCount"]
+        if booked is None and start is not None:
+            raise ValueError("Unknown booking count")
+        if any(v is not None and (type(v) is not int or v < 0) for v in (stock, booked)):
+            raise ValueError("Invalid schedule capacity")
+        if stock is not None and (booked or 0) >= stock:
+            continue
+        result.append((value[:10], value[11:16]))
+    return result
+
+
+def fetch_slots(biz_type, biz_id, item_id, start_ymd, end_ymd, tries=3, budget=None):
     pl = {"operationName": "hourlySchedule", "variables": {"scheduleParams": {
         "businessTypeId": int(biz_type), "businessId": biz_id, "bizItemId": item_id,
         "startDateTime": f"{start_ymd}T00:00:00", "endDateTime": f"{end_ymd}T23:59:59",
         "fixedTime": True, "includesHolidaySchedules": True}}, "query": QUERY}
     raw = None
     for attempt in range(tries):
+        if budget:
+            budget.before("booking")
         try:
             req = urllib.request.Request(GQL, data=json.dumps(pl).encode(), method="POST",
                                          headers={"Content-Type": "application/json"})
             with urllib.request.urlopen(req, timeout=20) as r:
+                if r.headers.get_content_type() == "text/html":
+                    raise ScheduleAccessRestricted("Unexpected booking access page")
                 raw = json.loads(r.read())
             break
+        except urllib.error.HTTPError as exc:
+            if exc.code in (401,403,429,503) or attempt == tries - 1:
+                raise
+            time.sleep(0.5 * (attempt + 1))
+        except ScheduleAccessRestricted:
+            raise
         except Exception:
             if attempt == tries - 1:
                 raise
             time.sleep(0.5 * (attempt + 1))
-    sch = (raw.get("data") or {}).get("schedule")
-    if not sch:
-        return []
-    hourly = (sch.get("bizItemSchedule") or {}).get("hourly") or []
-    rows = []
-    for h in hourly:
-        if not (h.get("isUnitBusinessDay") and h.get("isUnitSaleDay")):
-            continue
-        stock = h.get("stock")
-        if stock is not None and (h.get("bookingCount") or 0) >= stock:
-            continue
-        dt = h["unitStartTime"]  # "2026-06-07 14:00:00"
-        rows.append((dt[:10], dt[11:19]))
-    return rows
+    return [(day, tm + ":00") for day, tm in decode_slots(raw, start_ymd, end_ymd)]
 
 
 def clean_item_name(name):
@@ -248,10 +295,10 @@ def main():
     tomorrow_ymd = (today + timedelta(days=1)).strftime("%Y-%m-%d")
     end_ymd = (today + timedelta(days=DAYS - 1)).strftime("%Y-%m-%d")
 
-    targets = load_targets()
+    targets = load_targets(legacy=True)
+    random.shuffle(targets)
+    # Keep all service items for a shop together; only complete shops are saved.
     tasks = expand_tasks(targets)
-    # 순서를 섞는다 — 예산이 모자라도 매번 같은 샵이 빠지지 않게(늘 뒤쪽 샵만 갱신 안 되던 문제).
-    random.shuffle(tasks)
     # shop_id → {item_id: 이름} (상세 표시용)
     name_map = {t["id"]: {str(it.get("id")): it.get("name") for it in (t.get("items") or [])} for t in targets}
     print(f"📡 슬롯 수집: {len(targets)}곳 / item(디자이너·서비스) {len(tasks)}건, {start_ymd} ~ {end_ymd}")
@@ -266,15 +313,14 @@ def main():
     t0 = time.time()
     deadline = t0 + BUDGET_SEC                      # 예산 초과 시 멈추고 받은 것만 저장
     timed_out = False
-    ex = ThreadPoolExecutor(max_workers=16)
-    futs = {ex.submit(fetch_slots, t["biz_type"], t["biz_id"], t["item_id"], start_ymd, end_ymd): t for t in tasks}
-    for fut in as_completed(futs):
+    from general_source_budget import SourceBudget, SourcePaused
+    budget = SourceBudget(time.monotonic() + BUDGET_SEC)
+    for t in tasks:
         if time.time() > deadline:
             timed_out = True
             break
-        t = futs[fut]
         try:
-            for d, tm in fut.result():
+            for d, tm in fetch_slots(t["biz_type"],t["biz_id"],t["item_id"],start_ymd,end_ymd,budget=budget):
                 key = (t["id"], d, tm)
                 if key not in seen:  # 합집합 dedupe
                     seen[key] = {"shop_id": t["id"], "biz_id": t["biz_id"], "item_id": t["item_id"],
@@ -284,13 +330,24 @@ def main():
                     item_tmrw.setdefault(ik, set()).add(tm[:5])  # "14:00:00" → "14:00"
             ok += 1
             shop_done[t["id"]] += 1
-        except Exception:
+        except SourcePaused:
+            timed_out = True
+            break
+        except (ScheduleAccessRestricted,urllib.error.HTTPError) as exc:
+            if isinstance(exc,ScheduleAccessRestricted) or exc.code in (401,403,429,503):
+                budget.blocked(exc)
+                break
             err += 1
             err_shops.add(t["id"])
-    ex.shutdown(wait=False, cancel_futures=True)  # 남은 작업 취소(대기 없음) → 예산 내 종료
+        except (ValueError,urllib.error.URLError,TimeoutError):
+            err += 1
+            err_shops.add(t["id"])
     # 모든 item이 성공한 샵만 갱신. 미완(예산초과)·실패 샵은 옛 슬롯 보존 → 빈자리 증발 방지.
     safe_ids = [sid for sid in shop_total if shop_done[sid] == shop_total[sid] and sid not in err_shops]
     safe_set = set(safe_ids)
+    if not safe_ids:
+        print("No complete shop observations to commit")
+        return
     rows = [v for v in seen.values() if v["shop_id"] in safe_set]
     print(f"   조회: 성공 {ok} 실패 {err}{' ⏱️예산초과(부분저장)' if timed_out else ''} | 갱신 {len(safe_ids)}곳 | 빈슬롯 {len(rows)}행 | {time.time()-t0:.0f}초")
 

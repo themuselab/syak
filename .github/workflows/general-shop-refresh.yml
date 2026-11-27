@@ -1,0 +1,35 @@
+name: general-shop-refresh
+
+on:
+  schedule:
+    - cron: '1,16,31,46 * * * *'
+    - cron: '12 * * * *'
+  workflow_dispatch:
+    inputs:
+      kind:
+        type: choice
+        options: [slots, metadata]
+        default: slots
+
+permissions:
+  contents: read
+
+concurrency:
+  group: general-shop-${{ inputs.kind || (github.event.schedule == '12 * * * *' && 'metadata' || 'slots') }}
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 13
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Refresh one logical shard
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
+          KIND: ${{ inputs.kind || (github.event.schedule == '12 * * * *' && 'metadata' || 'slots') }}
+        run: python scraper/general_shop_refresh.py "$KIND"

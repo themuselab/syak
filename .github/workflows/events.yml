@@ -2,31 +2,26 @@ name: event-ingest
 
 on:
   schedule:
-    - cron: "30 */3 * * *" # 3시간마다. 속도 제한 때문에 한 번에 샤드당 ~500곳만 → 횟수로 전체(~3.3만 곳)를 돈다
+    - cron: "30 */3 * * *"
   workflow_dispatch: {} # 수동 실행 버튼
 
 concurrency:
   group: event-ingest
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   ingest:
     runs-on: ubuntu-latest
     timeout-minutes: 18 # 시간예산 14분 + 여유. 빠른실패라 차단돼도 안 멈춤.
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [0, 1, 2, 3] # 4분할 = 각 러너 다른 IP
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: "Ingest events (shard ${{ matrix.shard }}/4) → RDS (백엔드 internal API)"
+      - name: "Ingest event observations"
         env:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
-          SHARD: ${{ matrix.shard }}
           NUM_SHARDS: "4"
           BUDGET_SEC: "840"
-        run: python scraper/enrich_events.py
+        run: SHARD=$(( $(date -u +%s) / 10800 % 4 )) python scraper/enrich_events.py

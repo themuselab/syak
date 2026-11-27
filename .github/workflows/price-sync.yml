@@ -1,10 +1,10 @@
 name: price-sync
 
 # 네이버 가격 변경 → 앱 반영. 전국 4만을 한 번에 X, '가장 오래 안 본 샵'부터 롤링 갱신.
-# 매 런 다른 러너 IP + 시간예산 → 차단 회피. price_synced_at 도장으로 큐처럼 순환.
+# 다른 작업과 공유하는 네이버 요청 예산 안에서 가장 오래된 샵부터 확인한다.
 on:
   schedule:
-    - cron: "17,47 * * * *" # 30분마다. 네이버 IP당 요청 한도 안에서만 받고(429 나면 바로 종료) 러너는 1대.
+    - cron: "17,47 * * * *"
   workflow_dispatch:
     inputs:
       batch:
@@ -14,17 +14,12 @@ on:
 
 concurrency:
   group: price-sync
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   sync:
     runs-on: ubuntu-latest
     timeout-minutes: 15 # 스크랩 예산 10분 + 저장 여유
-    # 러너 1대. 한도를 피하려고 러너(IP)를 늘리지 않는다 — 대신 리뷰는 7일에 한 번, 손님 눈에 띄는 샵 우선(백엔드 price-targets).
-    strategy:
-      fail-fast: false
-      matrix:
-        part: [0]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -35,8 +30,5 @@ jobs:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           INTERNAL_API_KEY: ${{ secrets.INTERNAL_API_KEY }}
           PRICE_BATCH: ${{ github.event.inputs.batch || '200' }}
-          PRICE_WORKERS: "2"
           BUDGET_SEC: "600"
-          PART: ${{ matrix.part }}
-          PARTS: "1"
         run: python scraper/price_sync.py
