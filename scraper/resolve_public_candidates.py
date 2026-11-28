@@ -177,10 +177,25 @@ def run(shard, limit, run_number=1):
     return counts
 
 
+def report_coverage(counts):
+    # Internal RDS reads can continue while the upstream site is paused.
+    coverage = api_get(QUEUE+'?kind=coverage')['coverage']
+    print(json.dumps({'counts':counts,'coverage':coverage}))
+    summary = os.environ.get('GITHUB_STEP_SUMMARY')
+    if summary and coverage:
+        with open(summary,'a',encoding='utf-8') as out:
+            out.write('### 공공데이터 주소 후보 갱신\n\n')
+            for label,key in [('등록 주소','registeredAddresses'),('플레이스 일치','linkedPlaces'),
+                              ('리뷰 본문 보유 후보','withReviewSamples'),('매장 사진 URL 보유 후보','withBusinessPhotoUrls')]:
+                out.write(f"- {label} {int(coverage[key]):,}곳\n")
+            if counts.get('shared_hold') or counts.get('upstream_hold'):
+                out.write('- 원본 서비스 대기 중\n')
+
+
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--shard',type=int,choices=range(32),help='Restrict a diagnostic run to one partition')
     parser.add_argument('--limit',type=int,choices=range(1,33),default=12)
     args=parser.parse_args()
     run_number=int(os.environ.get('GITHUB_RUN_NUMBER') or int(time.time()//900))
-    print(json.dumps(run(args.shard,args.limit,run_number)))
+    report_coverage(run(args.shard,args.limit,run_number))
