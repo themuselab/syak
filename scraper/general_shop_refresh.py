@@ -28,19 +28,7 @@ def explicit_reviews(html, sid):
     return observations(state,{}, {},sid) if isinstance(state,dict) else {}
 
 
-def metadata(shop,budget):
-    sid=str(shop['id'])
-    budget.before('place')
-    rec,notice,_=parse_place(request_html(sid),sid)
-    category=VERIFIED_CATEGORIES.get(rec['category_detail'])
-    listed = {shop.get('category'), *(shop.get('categories') or [])}
-    if category not in {'네일','헤어','메이크업'} or category not in listed:
-        return 'category-review',{}
-    data={'placeId':sid,'sourceCategory':rec['category_detail'],'availabilityNotice':bool(notice),
-          'photos':rec['images']['gallery'],'contacts':rec.get('contacts',[]),**rec['_observations']}
-    for field in ('phone','virtualPhone'):
-        if rec.get(field):
-            data[field]=rec[field]
+def fill_reviews(sid, data, budget):
     if not data.get('reviews'):
         try:
             budget.before('place')
@@ -54,6 +42,22 @@ def metadata(shop,budget):
             budget.blocked(exc)
         except (SourcePaused,ValueError,URLError,TimeoutError):
             pass
+
+
+def metadata(shop,budget):
+    sid=str(shop['id'])
+    budget.before('place')
+    rec,notice,_=parse_place(request_html(sid),sid)
+    category=VERIFIED_CATEGORIES.get(rec['category_detail'])
+    listed = {shop.get('category'), *(shop.get('categories') or [])}
+    if category not in {'네일','헤어','메이크업'} or category not in listed:
+        return 'category-review',{}
+    data={'placeId':sid,'sourceCategory':rec['category_detail'],'availabilityNotice':bool(notice),
+          'photos':rec['images']['gallery'],'contacts':rec.get('contacts',[]),**rec['_observations']}
+    for field in ('phone','virtualPhone'):
+        if rec.get(field):
+            data[field]=rec[field]
+    fill_reviews(sid,data,budget)
     return 'observed',data
 
 

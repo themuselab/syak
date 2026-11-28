@@ -4,6 +4,8 @@ from collections import Counter
 from datetime import datetime, timezone
 import json
 import math
+import os
+from itertools import zip_longest
 import re
 import time
 import unicodedata
@@ -13,6 +15,7 @@ from urllib.request import Request, urlopen
 
 from catalog_audit import LIMIT_MSG, Pause, VisibleText, linked_place_id, parse_place, request_html
 from slot_ingest import api_get, api_post
+from general_shop_refresh import fill_reviews
 from general_source_budget import SourceBudget, SourcePaused
 
 GATE = '/internal/shops/source-backoff'
@@ -76,19 +79,40 @@ def same_shop(target, place):
             and delta<=100 and place.get('category_detail') in CATEGORIES)
 
 
-def run(shard, limit):
+def candidate_targets(shard, limit, run_number):
+    # Native and delayed Actions runs advance the same complete 32-shard rotation.
+    shards = [shard] if shard is not None else [(4 * (run_number - 1) + n) % 32 for n in range(4)]
+    pages = [api_get(QUEUE+'?'+urlencode({'shard':part,'limit':limit}))['targets'] for part in shards]
+    pending = [target for group in zip_longest(*pages) for target in group if target is not None]
+    linked_pages = [api_get(QUEUE+'?'+urlencode({'kind':'linked','shard':part,'limit':limit}))['targets'] for part in shards]
+    linked = [target for group in zip_longest(*linked_pages) for target in group if target and target.get('verifiedPlaceId')]
+    return [target for pair in zip_longest(pending,linked) for target in pair if target is not None][:limit]
+
+
+def initial_snapshot(place, budget):
+    record = {'photos':place['images']['gallery'][:100], **place.get('_observations',{})}
+    fill_reviews(str(place['id']),record,budget)
+    return {'reviews':record.get('reviews',[])[:10], 'photos':record['photos'],
+            **{k:record[k] for k in ('visitorReviewCount',) if k in record},
+            **{k:place[k] for k in ('phone','virtualPhone','instagram') if place.get(k)}}
+
+
+def run(shard, limit, run_number=1):
     counts = Counter()
     if not allow():
         return {'shared_hold':1}
     budget = SourceBudget(time.monotonic()+540)
-    targets = api_get(QUEUE+'?'+urlencode({'shard':shard,'limit':limit}))['targets']
+    targets = candidate_targets(shard,limit,run_number)
     for target in targets:
         if not allow():
             counts['shared_hold']+=1
             break
         result = {'publicId':target['publicId'],'identityKey':target['identityKey'],'observedAt':clock().isoformat()}
         try:
-            if target.get('proposedPlaceId'):
+            if target.get('verifiedPlaceId'):
+                result['refreshPlaceId'] = target['verifiedPlaceId']
+                ids = [target['verifiedPlaceId']]
+            elif target.get('proposedPlaceId'):
                 ids = [target['proposedPlaceId']]
             else:
                 budget.before('place')
@@ -100,11 +124,15 @@ def run(shard, limit):
                     budget.before('place')
                     place,_,_=parse_place(request_html(sid),sid)
                     if same_shop(target,place):
-                        matches.append({'id':sid,'url':f'https://m.place.naver.com/place/{sid}/home',
-                          'name':place['name'],'sourceCategory':place['category_detail'],'roadAddress':place['roadAddress_full'],
-                          'latitude':float(place['y']),'longitude':float(place['x'])})
+                        matches.append(place)
                 if len(matches)==1:
-                    result.update(outcome='verified',place=matches[0])
+                    place = matches[0]
+                    sid = str(place['id'])
+                    result.update(outcome='verified',place={
+                        'id':sid,'url':f'https://m.place.naver.com/place/{sid}/home','name':place['name'],
+                        'sourceCategory':place['category_detail'],'roadAddress':place['roadAddress_full'],
+                        'latitude':float(place['y']),'longitude':float(place['x']),
+                        'snapshot':initial_snapshot(place,budget)})
         except SourcePaused:
             counts['shared_hold_or_budget']+=1
             break
@@ -124,20 +152,35 @@ def run(shard, limit):
         except (URLError,ValueError,TimeoutError):
             result['outcome']='unavailable'
         try:
-            applied=api_post(QUEUE,result)['applied']
+            ack=api_post(QUEUE,result)
+            applied=ack['applied']
+            if applied and result['outcome']=='verified':
+                if ack.get('snapshotSaved') is not True:
+                    raise RuntimeError('Missing candidate snapshot acknowledgement')
+                snapshot=result['place']['snapshot']
+                counts['review_samples']+=len(snapshot['reviews'])
+                counts['business_photo_urls']+=len(snapshot['photos'])
         except HTTPError as exc:
             if exc.code not in (400,409) or result['outcome']!='verified':
                 raise
             result.pop('place')
             result['outcome']='ambiguous'
-            applied=api_post(QUEUE,result)['applied']
+            ack=api_post(QUEUE,result)
+            applied=ack['applied']
+            if applied and result['outcome']=='verified':
+                if ack.get('snapshotSaved') is not True:
+                    raise RuntimeError('Missing candidate snapshot acknowledgement')
+                snapshot=result['place']['snapshot']
+                counts['review_samples']+=len(snapshot['reviews'])
+                counts['business_photo_urls']+=len(snapshot['photos'])
         counts[result['outcome'] if applied else 'stale']+=1
     return counts
 
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--shard',type=int,choices=range(32),default=int(time.time()//900)%32)
+    parser.add_argument('--shard',type=int,choices=range(32),help='Restrict a diagnostic run to one partition')
     parser.add_argument('--limit',type=int,choices=range(1,33),default=12)
     args=parser.parse_args()
-    print(json.dumps(run(args.shard,args.limit)))
+    run_number=int(os.environ.get('GITHUB_RUN_NUMBER') or int(time.time()//900))
+    print(json.dumps(run(args.shard,args.limit,run_number)))
