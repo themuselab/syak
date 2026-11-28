@@ -10,4 +10,8 @@
 - 웹·Toss의 플랫폼별 동작과 Vercel 함수/SEO를 구분해서 검증한다. `npm run deploy`는 실제 Toss 배포다.
 - `.claude/rules/`에 아키텍처와 수집·배포 규칙을 분리했다. 전체 지도는 `../CLAUDE.md`.
 
+## 인스타 포트폴리오 작업을 이어받을 때
+
+사진 피드·샵 갤러리·이미지 비용 작업은 먼저 [포트폴리오 개발 인계](docs/portfolio-gallery-handoff.md)를 읽는다. 수집과 정제는 기존 Mac에서 계속한다. 다른 PC는 샘플 데이터로 개발을 준비하고, 운영 반영 시점은 수집 결과를 받은 뒤 사용자와 정한다.
+
 공통 MCP·명령·훅은 상위 `syak/`에서 Claude Code를 실행해 사용한다.
