@@ -1,7 +1,7 @@
 name: Archive shop portfolio photo candidates
 on:
   schedule:
-    - cron: '42 * * * *'
+    - cron: '12,42 * * * *'
   workflow_dispatch: {}
 permissions:
   contents: read
